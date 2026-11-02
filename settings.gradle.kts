@@ -4,6 +4,11 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    plugins {
+        id("com.android.application") version "8.13.2"
+        id("org.jetbrains.kotlin.android") version "2.2.21"
+        id("org.jetbrains.kotlin.plugin.compose") version "2.2.21"
+    }
 }
 
 dependencyResolutionManagement {
@@ -14,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "conectoma-3.0"
+rootProject.name = "Conectoma"
 include(":app")

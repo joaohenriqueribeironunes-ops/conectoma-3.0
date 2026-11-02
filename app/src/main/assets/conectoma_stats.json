@@ -1,0 +1,26 @@
+{
+  "source": "FlyWire FAFB v783 (Dorkenwald et al. 2024; Schlegel et al. 2024)",
+  "neurons_total": 139255,
+  "neurons_selected": 34813,
+  "neurons_fraction": 0.25,
+  "synapses_selected": 3750000,
+  "synapses_total_pairs": 15091983,
+  "synapses_fraction": 0.2485,
+  "syn_threshold_used": 1,
+  "mean_out_degree": 107.72,
+  "class_counts": {
+    "ascending": 590,
+    "central": 8097,
+    "descending": 326,
+    "endocrine": 20,
+    "motor": 26,
+    "optic": 19384,
+    "sensory": 4226,
+    "visual_centrifugal": 131,
+    "visual_projection": 2013
+  },
+  "dopaminergic_fraction": 0.1262,
+  "gabaergic_fraction": 0.2169,
+  "glutamatergic_fraction": 0.1706,
+  "cholinergic_fraction": 0.4635
+}

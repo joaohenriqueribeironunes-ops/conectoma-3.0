@@ -1,33 +1,46 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
-    namespace = "app.conectoma.v3"
-    compileSdk = 34
+    namespace = "com.conectoma.app"
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.conectoma.v3"
+        applicationId = "com.conectoma.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 3
-        versionName = "3.0.0"
-        vectorDrawables.useSupportLibrary = true
+        targetSdk = 36
+        versionCode = 7
+        versionName = "3.0"
+        vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        // the keystore is not committed; create one with tools/make_keystore.ps1
+        val keystore = file("../keystore/conectoma.jks")
+        if (keystore.exists()) {
+            create("release") {
+                storeFile = keystore
+                storePassword = System.getenv("CONECTOMA_STORE_PASSWORD") ?: "conectoma"
+                keyAlias = System.getenv("CONECTOMA_KEY_ALIAS") ?: "conectoma"
+                keyPassword = System.getenv("CONECTOMA_KEY_PASSWORD") ?: "conectoma"
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            signingConfig = signingConfigs.findByName("release")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
@@ -35,26 +48,52 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    androidResources {
+        noCompress += listOf("bin")
+    }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+
+    testOptions {
+        unitTests.all {
+            it.maxHeapSize = "3g"
+            it.testLogging { events("passed", "failed", "skipped") }
+        }
+    }
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
-    implementation(composeBom)
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.activity:activity-compose:1.9.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
+
+    implementation("androidx.compose.ui:ui:1.9.2")
+    implementation("androidx.compose.ui:ui-graphics:1.9.2")
+    implementation("androidx.compose.ui:ui-text:1.9.2")
+    implementation("androidx.compose.foundation:foundation:1.9.2")
+    implementation("androidx.compose.foundation:foundation-layout:1.9.2")
+    implementation("androidx.compose.animation:animation:1.9.2")
+    implementation("androidx.compose.runtime:runtime:1.9.2")
+    implementation("androidx.compose.material:material:1.9.2")
+    implementation("androidx.compose.material:material-ripple:1.9.2")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
+    testImplementation("junit:junit:4.13.2")
 }

@@ -1,54 +1,113 @@
 # Conectoma 3.0
 
-App Android em **Kotlin** (Jetpack Compose) que simula um conectoma em escala de *Drosophila*, com estética **Liquid Glass do iOS 27**, aprendizado por fala e URL, plasticidade Hebbiana e um ciclo autônomo — sem exigir que você instale Android SDK, JDK ou Gradle no PC. O APK é gerado no GitHub Actions.
+Assistente Android que **raciocina sobre o conectoma real do cérebro da mosca**
+(FlyWire FAFB v783). Sem servidor, sem nuvem: tudo roda no aparelho.
 
-## O que este app é (e o que não é)
+| | |
+|---|---|
+| Neurônios | **34.813** (25,0% dos 139.255 do cérebro completo) |
+| Sinapses | **3.750.000** (24,9% das 15.091.983 do dataset) |
+| Palavras | **35.311** no léxico, com definições em português |
+| APK | 40 MB, assinado, `minSdk 26` (Android 8+), `targetSdk 36` |
 
-Não é um cérebro biológico nem um LLM. É um **motor de grafo esparso** no aparelho:
+## Instalar
 
-| Grandeza | Valor | Origem |
-| --- | --- | --- |
-| Neurônios | 34 813 (¼ de 139 255) | FlyWire, cérebro adulto de *Drosophila melanogaster* (Dorkenwald et al., *Nature* 2024) |
-| Sinapses | 3 750 000 arestas dirigidas | pedido do projeto; família estatística do FlyWire (rich-club ~30%, clustering local ~71%) |
-| Transmissores | ACh, GABA, glutamato, dopamina, octopamina, serotonina | anotações do conectoma da mosca |
-| Aprendizado associativo | assembleias estilo neurônios de Kenyon / corpo de cogumelo | literatura da Drosophila |
+1. Copie `Conectoma-3.0.apk` para o celular (cabo, Google Drive, Telegram…).
+2. Ao abrir o APK, autorize **"instalar apps desconhecidos"** para o app de origem.
+3. Instale e abra. A primeira abertura leva alguns segundos: ele copia o
+   conectoma e monta as 3,75 milhões de sinapses na memória.
 
-Cada palavra vira uma **assembleia** de neurônios. Quando duas ideias se alinham **semanticamente** (cosseno de embeddings de n-gramas) e **matematicamente** (Jaccard, Levenshtein, hops no grafo, log-distância se forem números), o **motor sináptico** dispara as assembleias juntas e o **motor de neuroplasticidade** reforça as arestas (Hebb). Se o SNC simulado “sente” o entendimento, dispara um **impulso** e um pulso **dopaminérgico** na UI.
+Não é preciso instalar SDK, Java ou nada no PC. O APK é auto-contido.
 
-## Motores
+## As três telas
 
-1. **Grafo sináptico** — 3,75 M de conexões em arrays compactos (sem um objeto por sinapse).
-2. **Motor semântico** — distância conceitual em 64 dimensões.
-3. **Motor matemático** — distância quantitativa + caminho no conectoma.
-4. **Motor sináptico** — co-ativação e propagação de impulso.
-5. **Neuroplasticidade** — Hebb + decaimento homeostático.
-6. **Dopamina** — recompensa só quando semântica, matemática e Δpeso cruzam limiar.
-7. **Dicionário vivo** — léxico inicial PT/EN + crescimento por fala, páginas e Wiktionary/Wikipedia.
-8. **URL** — baixa a página, limpa HTML, tokeniza, integra.
-9. **Autônomo** — a cada ~25 min escolhe um par *distante*, busca definições/imagens e tenta uma ponte.
-10. **HyperOS 1** — `minSdk`/`targetSdk` alinhados ao guia Xiaomi (piso 23, alvo 34), meta-data HyperOS, boot MIUI, WorkManager. Sem SDK proprietário (não pede App Id nem instala nada no PC).
+**Assistente** — o orbe é o conectoma vivo: cada ponto é um neurônio real, cada
+linha uma sinapse real, e os clarões são disparos. Escreva embaixo.
 
-## Interface
+- `o que é sinapse?` → definição + conceitos ligados
+- `como a música se liga à matemática?` → distância conceitual e vizinhos comuns
+- `amor é o que move o mundo` → ele grava a definição e reforça as conexões
 
-Estética **iOS 27 / Liquid Glass**: vidro translúcido, borda escura, brilho especular, cantos ~28 dp, barra flutuante, pulso rosa quando há compreensão.
+**Aprender** — cole um URL (Wikipédia funciona muito bem). Ele lê a página,
+extrai conceitos, cria ligações e aprende palavras novas. O interruptor de
+**aprendizado autônomo** faz ele buscar temas sozinho e continuar mesmo com o
+app fechado (serviço em primeiro plano).
 
-## APK
+**Cérebro** — dopamina acumulada, conexões que você fortaleceu, busca no
+dicionário e a calculadora de distância conceitual entre duas palavras.
 
-O workflow `.github/workflows/release.yml` gera `conectoma-3.0.apk` e, em tags `v*`, publica na Release.
+## O que é real aqui
 
-Instalação no telefone: ative fontes desconhecidas / instalar via GitHub. Assinatura de demonstração (keystore debug do CI), não é a Play Store.
+- **O conectoma é o dado original.** `connections.parquet` e `nodes.parquet`
+  foram decodificados e convertidos num grafo CSR de 3,75 M de sinapses; cada
+  sinapse carrega a contagem de sinapses e o perfil de neurotransmissores
+  (dopamina, GABA, acetilcolina, glutamato) medido no experimento.
+- **Os disparos são simulados** com neurônios integra-e-dispara sobre essa
+  fiação: inibição vem do GABA, excitação de acetilcolina/glutamato.
+- **A plasticidade é STDP de três fatores**: traço de elegibilidade × dopamina
+  × dopamina da própria sinapse. O peso de cada sinapse é multiplicado pelo
+  aprendizado e salvo entre sessões.
+- **A dopamina é um erro de predição de recompensa** (modelo de Schultz): sobe
+  quando o resultado supera a expectativa, e é ela que abre a janela de reforço.
+- **A semântica usa vetores reais** (Word2Vec CBOW 50d do NILC/USP,
+  929 mil palavras), reduzidos às 35.311 do léxico; a distância combina cosseno,
+  geodésica no grafo de conceitos aprendido e forma da palavra.
+- **As definições vêm do Wikcionário em português** (28 mil verbetes) mais um
+  glossário de neurociência curado à mão.
 
-## Uso
+## O que ele não é
 
-1. Abra o app — na primeira vez ele tece as 3,75 M de sinapses.
-2. Fale ou escreva; o léxico cresce.
-3. Cole uma URL (Wikipedia funciona bem).
-4. Toque em **autônomo** para um ciclo imediato de conceitos distantes.
-5. A aba **OS** mostra se o aparelho reporta HyperOS.
+Não é um modelo de linguagem. Ele **não tem conhecimento factual do mundo**
+(quem descobriu o Brasil, placar de jogo, notícia de hoje). Ele entende
+conceitos, definições, relações e distâncias — e aprende o resto com você e com
+os URLs que você der. Os limites são honestos: sem internet, o conhecimento é
+o do léxico embutido.
 
-## Referências
+## Privacidade
 
-- Dorkenwald et al., *Neuronal wiring diagram of an adult brain*, Nature 2024 (139 255 neurônios, ~54,5 M sinapses químicas).
-- Lin et al., *Network statistics of the whole-brain connectome of Drosophila*, Nature 2024 (rich-club ~30%, grau médio ~20,5 no grafo limiarizado).
-- Documentação Xiaomi HyperOS: minSdk 23, targetSdk 34.
-- Apple WWDC 2026: Liquid Glass no iOS 27 (difusão, borda escura, highlight, slider de transparência).
+Nenhum dado sai do aparelho por padrão. A rede só é usada quando você manda ler
+um URL ou liga o modo autônomo (que consulta resumos do Wikipédia). A memória
+aprendida fica em `SharedPreferences` + `files/plastic.bin`, no próprio app.
+
+## Construir do zero
+
+Requisitos: JDK 17, Android SDK com `platforms;android-36`. O wrapper já aponta
+para o Gradle 8.14.3.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build.ps1
+```
+
+O script gera o keystore se ele não existir, compila e deixa o APK em
+`Conectoma.apk`. Para assinar com outro keystore, use as variáveis
+`CONECTOMA_STORE_PASSWORD`, `CONECTOMA_KEY_ALIAS` e `CONECTOMA_KEY_PASSWORD`.
+O keystore **não** é versionado (veja `.gitignore`).
+
+Pipeline de dados (Python 3.12 + numpy) — detalhes em [`tools/README.md`](tools/README.md):
+
+| script | função |
+|---|---|
+| `tools/parquet_read.py` | leitor Parquet mínimo (ZSTD via libzstd, RLE/bit-packed, dicionário) |
+| `tools/build_connectome.py` | seleciona o quarto do cérebro e grava `connectome.bin` |
+| `tools/build_pt_dict.py` | extrai definições do dump do Wikcionário |
+| `tools/build_lexicon.py` | monta `lexicon.bin` (palavras, definições, vetores, vizinhos) |
+
+Testes de motor (rodam na JVM, sem aparelho):
+
+```powershell
+./gradlew testDebugUnitTest
+```
+
+11 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização e
+o diálogo do assistente.
+
+## Créditos e licenças
+
+- Conectoma: **FlyWire FAFB v783** — Dorkenwald et al., *Nature* 2024
+  ([doi:10.1038/s41586-024-07558-y](https://doi.org/10.1038/s41586-024-07558-y));
+  anotações de Schlegel et al., *Nature* 2024
+  ([doi:10.1038/s41586-024-07686-5](https://doi.org/10.1038/s41586-024-07686-5)).
+  Dados CC-BY-4.0.
+- Definições: Wikcionário em português, CC BY-SA 3.0.
+- Vetores: NILC/USP (Word2Vec CBOW 50d), uso pessoal e educacional.
+- Ícone: arte original fornecida pelo autor do projeto.

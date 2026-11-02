@@ -1,0 +1,63 @@
+neurônio	subst.	unidade celular do sistema nervoso, capaz de gerar e conduzir impulsos elétricos; recebe sinapses em seus dendritos e transmite pelo axônio
+sinapse	subst.	junção funcional entre dois neurônios onde o impulso é transmitido por neurotransmissores; pode ser excitatória ou inibitória
+axônio	subst.	prolongamento do neurônio que conduz o potencial de ação até as terminações sinápticas
+dendrito	subst.	ramificação do neurônio que recebe os contatos sinápticos e integra a corrente que chega ao corpo celular
+conectoma	subst.	mapa completo das conexões neurais de um cérebro; grafo em que neurônios são vértices e sinapses são arestas
+dopamina	subst.	neurotransmissor catecolaminérgico ligado a recompensa, motivação e modulação da plasticidade sináptica
+neurotransmissor	subst.	molécula liberada na sinapse que excita, inibe ou modula o neurônio pós-sináptico
+glutamato	subst	principal neurotransmissor excitatório do sistema nervoso central
+GABA	subst	principal neurotransmissor inibitório do sistema nervoso central
+acetilcolina	subst.	neurotransmissor excitatório e modulador presente na junção neuromuscular e em circuitos cognitivos
+serotonina	subst.	neurotransmissor que regula humor, sono e estados afetivos
+octopamina	subst.	neurotransmissor dos invertebrados equivalente funcional à noradrenalina, ligado a alerta e recompensa
+potencial de ação	subst.	despolarização transitória da membrana do neurônio que se propaga como impulso nervoso
+impulso nervoso	subst.	sinal elétrico que percorre o axônio e chega às sinapses
+membrana	subst.	bicamada lipídica que separa o interior da célula do meio externo e sustenta o potencial de repouso
+limiar	subst.	nível de potencial de membrana a partir do qual o neurônio dispara um potencial de ação
+plasticidade	subst.	capacidade do sistema nervoso de mudar a força das conexões em função da experiência
+plasticidade sináptica	subst.	ajuste duradouro da eficácia de uma sinapse, base celular do aprendizado e da memória
+STDP	subst.	regra de aprendizado dependente do instante do disparo: pré antes de pós fortalece, a ordem inversa enfraquece
+hebbiano	adj.	relativo à regra de Hebb: neurônios que disparam juntos fortalecem a conexão entre eles
+reforço	subst.	aumento da força de uma sinapse ou de uma associação após repetição ou recompensa
+memória	subst.	rastro persistente de experiência armazenado como mudança na força das conexões
+aprendizado	subst.	processo de adquirir e reter informação por meio da modificação das conexões neurais
+recompensa	subst.	estímulo que aumenta a probabilidade de um comportamento e dispara dopamina
+erro de predição	subst.	diferença entre a recompensa esperada e a obtida, sinal que modula o aprendizado
+cérebro	subst.	órgão central do sistema nervoso onde se organizam percepção, memória e comportamento
+sistema nervoso	subst.	conjunto de neurônios e glias que coordena as funções do organismo
+córtex	subst.	camada externa do cérebro, envolvida em percepção, linguagem e raciocínio
+hipocampo	subst.	estrutura do lobo temporal essencial para formar novas memórias
+cerebelo	subst.	estrutura encefálica que coordena movimento, equilíbrio e timing
+gânglio	subst.	agrupamento de corpos neuronais fora do sistema nervoso central
+circuito neural	subst.	conjunto de neurônios conectados que executa uma função específica
+rede neural	subst.	modelo computacional composto por unidades conectadas que ajustam pesos a partir de exemplos
+assembly	subst.	população de neurônios que se ativa em conjunto para representar um conceito
+disparo	subst.	emissão de um potencial de ação por um neurônio
+spike	subst.	potencial de ação registrado como evento discreto no tempo
+excitatório	adj.	que aumenta a probabilidade de disparo do neurônio seguinte
+inibitório	adj.	que reduz a probabilidade de disparo do neurônio seguinte
+conectômica	subst.	disciplina que mapeia e compara conectomas
+Drosophila	subst.	mosca-das-frutas, organismo modelo cujo cérebro foi completamente mapeado
+FlyWire	subst.	consórcio e conjunto de dados que reconstruiu o conectoma completo do cérebro da mosca
+grafo	subst.	estrutura matemática formada por vértices e arestas que representam relações
+vértice	subst.	nó de um grafo; no conectoma, um neurônio
+aresta	subst.	ligação entre dois vértices de um grafo; no conectoma, uma sinapse
+similaridade	subst.	medida de proximidade entre dois objetos; para vetores, frequentemente o cosseno do ângulo
+cosseno	subst.	função trigonométrica usada para medir o ângulo entre dois vetores e comparar direções
+embedding	subst.	representação de uma palavra ou objeto como vetor denso em um espaço de dimensões reduzidas
+espaço vetorial	subst.	estrutura matemática onde vetores podem ser somados e escalados, base das representações semânticas
+distância	subst.	grandeza que mede o afastamento entre dois pontos, vetores ou conceitos
+semântica	subst.	estudo do significado das palavras e das relações entre conceitos
+léxico	subst.	conjunto de palavras de uma língua com seus significados
+conceito	subst.	representação mental abstrata que agrupa objetos ou ideias por traços comuns
+inferência	subst.	processo de derivar conclusões a partir de informação disponível
+raciocínio	subst.	encadeamento de inferências que produz novas conclusões
+curiosidade	subst.	disposição a explorar o desconhecido, que orienta o aprendizado autônomo
+autonomia	subst.	capacidade de decidir e agir sem comando externo
+entropia	subst.	medida de desordem ou de incerteza de um sistema
+algoritmo	subst.	sequência finita de passos que resolve um problema
+inteligência artificial	subst.	campo que constrói sistemas capazes de realizar tarefas que exigem inteligência
+aprendizado de máquina	subst.	conjunto de métodos que ajustam modelos a partir de dados
+modelo	subst.	representação simplificada de um sistema usada para prever ou explicar
+potencial de repouso	subst.	diferença de potencial elétrico da membrana em ausência de estímulo
+homeostase	subst.	tendência do sistema a manter suas variáveis dentro de faixas estáveis
