@@ -27,6 +27,8 @@ class Brain private constructor(val context: Context) {
         private set
     lateinit var autonomy: AutonomousEngine
         private set
+    lateinit var memory: MemoryEngine
+        private set
     val dopamine = DopamineSystem()
 
     /** serializa todo acesso ao grafo semântico (chat, ingestão e autonomia) */
@@ -61,7 +63,8 @@ class Brain private constructor(val context: Context) {
             network = SpikingNetwork(connectome)
             onStage("carregando o léxico", 0.62f)
             semantics = SemanticEngine(context.assets.open("lexicon.bin").use { it.readBytes() })
-            reasoning = ReasoningEngine(connectome, network, semantics, dopamine)
+            memory = MemoryEngine(semantics)
+            reasoning = ReasoningEngine(connectome, network, semantics, dopamine, memory)
             consolidation = ConsolidationEngine(semantics)
             autonomy = AutonomousEngine(semantics)
             onStage("reconstruindo a memória", 0.82f)
@@ -79,7 +82,25 @@ class Brain private constructor(val context: Context) {
         val response = reasoning.respond(text)
         totalLearningEvents++
         totalSpikes += response.spikes
+        lastCoverage = response.coverage
+        lastSynapsesSwept = response.synapsesSwept
         remember(response)
+        // cada conversa também vira memória: guarda o contexto para respostas futuras mais espontâneas
+        runCatching {
+            val clean = text.trim()
+            val subjectIds = Tokenizer.contentWords(clean).mapNotNull { w ->
+                semantics.idOf(w).takeIf { it >= 0 }
+            }
+            val ids = (subjectIds + response.hits.map { it.wordId }).filter { it >= 0 }.distinct()
+            val meaningful = ids.isNotEmpty() && (
+                clean.length > 70 || clean.contains(" é ") || clean.contains(" são ") ||
+                    clean.contains(" significa ") || clean.contains(" quer dizer ")
+                )
+            if (meaningful) {
+                memory.remember("conversa", "chat://turn", clean, ids)
+                runCatching { saveMemory() }
+            }
+        }
         response
     }
 
@@ -166,15 +187,23 @@ class Brain private constructor(val context: Context) {
         totalLearningEvents++
         totalSpikes += network.totalSpikes
 
-        // a short reverberation through the new material
-        val focus = concepts.take(6)
+        // reverberação profunda pelo material novo para integrar melhor
+        val focus = concepts.take(9)
         if (focus.size >= 2) {
-            val cands = focus.flatMap { semantics.neighborsOf(it).take(6).map { n -> n.first } }.distinct().take(80)
-            reasoning.think(focus, cands, steps = 14)
+            val cands = focus.flatMap { semantics.neighborsOf(it).take(9).map { n -> n.first } }.distinct().take(160)
+            val thought = reasoning.think(focus, cands, steps = 34)
+            lastCoverage = thought.coverage
+            lastSynapsesSwept = thought.synapsesSwept
         }
 
-        // costura o material novo no conhecimento antigo
+        // guarda o material aprendido na memória episódica
         val conceptList = concepts.toList()
+        runCatching { memory.remember(title, url, text, conceptList) }
+        runCatching { saveMemory() }
+        if (title.isNotBlank()) learnedTopics.add(title.take(120))
+        while (learnedTopics.size > 120) learnedTopics.remove(learnedTopics.first())
+
+        // costura o material novo no conhecimento antigo
         recentConcepts.addAll(conceptList)
         while (recentConcepts.size > 160) recentConcepts.removeAt(0)
         pendingConsolidation = conceptList.size >= 3
@@ -274,6 +303,22 @@ class Brain private constructor(val context: Context) {
         Autonomy(topic, chars, newWords, insight, description, exploration, task.label)
     }
 
+    // ------------------------------------------------------------------ spontaneous voice
+    var spontaneousCount = 0
+        private set
+
+    /** uma fala que nasce do estado interno, sem pergunta do usuário */
+    fun spontaneous(): ReasoningEngine.Spontaneous? = synchronized(learningLock) {
+        val s = runCatching { reasoning.spontaneous(rng, recentConcepts.toList()) }.getOrNull() ?: return null
+        spontaneousCount++
+        prefs.edit().putInt("spontaneous", spontaneousCount).apply()
+        s
+    }
+
+    private fun saveIfNeeded() {
+        if (totalLearningEvents % 4 == 0) save()
+    }
+
     // ------------------------------------------------------------------ stats
     data class Stats(
         val neurons: Int,
@@ -292,6 +337,11 @@ class Brain private constructor(val context: Context) {
         val autonomyBridges: Int,
         val autonomyInsights: Int,
         val lastTask: String,
+        val memoryEngrams: Int,
+        val memoryFacts: Int,
+        val spontaneous: Int,
+        val coverage: Float,
+        val synapsesSwept: Int,
     )
 
     fun stats(): Stats {
@@ -314,8 +364,20 @@ class Brain private constructor(val context: Context) {
             autonomyBridges = autonomy.bridges,
             autonomyInsights = autonomy.insights,
             lastTask = autonomy.lastLabel,
+            memoryEngrams = if (this::memory.isInitialized) memory.size else 0,
+            memoryFacts = if (this::memory.isInitialized) memory.factCount else 0,
+            spontaneous = spontaneousCount,
+            coverage = lastCoverage,
+            synapsesSwept = lastSynapsesSwept,
         )
     }
+
+    @Volatile
+    var lastCoverage: Float = 0f
+        private set
+    @Volatile
+    var lastSynapsesSwept: Int = 0
+        private set
 
     // ------------------------------------------------------------------ persistence
     private fun remember(response: ReasoningEngine.Response) {
@@ -337,12 +399,25 @@ class Brain private constructor(val context: Context) {
             .putInt("autoBridges", autonomy.bridges)
             .putInt("autoConsolidations", autonomy.consolidations)
             .putInt("autoInsights", autonomy.insights)
+            .putInt("spontaneous", spontaneousCount)
+            .putString("recent", recentConcepts.takeLast(64).joinToString("\u0001") { semantics.name(it) })
             .putString(
                 "status_line",
                 "${fmt(st.neurons)} neurônios · ${fmt(st.synapses)} sinapses · ${fmt(st.words)} palavras"
             )
             .apply()
+        runCatching { saveMemory() }
         runCatching { savePlastic() }
+    }
+
+    private fun saveMemory() {
+        File(context.filesDir, "memory.bin").writeText(memory.serialise())
+    }
+
+    private fun loadMemory() {
+        val file = File(context.filesDir, "memory.bin")
+        if (!file.exists()) return
+        runCatching { memory.restore(file.readText()) }
     }
 
     private fun fmt(v: Int): String = String.format(java.util.Locale("pt", "BR"), "%,d", v).replace(',', '.')
@@ -354,10 +429,10 @@ class Brain private constructor(val context: Context) {
         val plastic = connectome.plastic
         for (i in plastic.indices) {
             val p = plastic[i]
-            if (p < 0.94f || p > 1.06f) {
+            if (p < 0.90f || p > 1.10f) {
                 changed.add(i)
                 values.add(p)
-                if (changed.size >= 250_000) break
+                if (changed.size >= 600_000) break
             }
         }
         DataOutputStream(file.outputStream().buffered()).use { out ->
@@ -388,7 +463,13 @@ class Brain private constructor(val context: Context) {
     private fun restore() {
         prefs.getString("semantics", null)?.let { semantics.restoreLearned(it) }
         prefs.getString("topics", "")?.split("\u0001")?.filter { it.isNotBlank() }?.forEach { learnedTopics.add(it) }
+        prefs.getString("recent", "")?.split("\u0001")?.filter { it.isNotBlank() }?.forEach {
+            val id = semantics.idOf(it)
+            if (id >= 0) recentConcepts.add(id)
+        }
+        while (recentConcepts.size > 160) recentConcepts.removeAt(0)
         totalLearningEvents = prefs.getInt("events", 0)
+        spontaneousCount = prefs.getInt("spontaneous", 0)
         dopamine.restoreBursts(prefs.getInt("bursts", 0))
         autonomy.restore(
             tasks = prefs.getInt("autoTasks", 0),
@@ -397,6 +478,7 @@ class Brain private constructor(val context: Context) {
             consolidations = prefs.getInt("autoConsolidations", 0),
             insights = prefs.getInt("autoInsights", 0),
         )
+        loadMemory()
         loadPlastic()
     }
 

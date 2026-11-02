@@ -2,6 +2,7 @@ package com.conectoma.app
 
 import com.conectoma.app.core.Connectome
 import com.conectoma.app.core.DopamineSystem
+import com.conectoma.app.core.MemoryEngine
 import com.conectoma.app.core.Neuron
 import com.conectoma.app.core.ReasoningEngine
 import com.conectoma.app.core.SemanticEngine
@@ -10,6 +11,7 @@ import org.junit.Test
 import java.io.File
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
+import kotlin.random.Random
 
 /** Prints a transcript so the answers can be reviewed without a device. */
 class TranscriptTest {
@@ -33,10 +35,23 @@ class TranscriptTest {
         val connectome = Connectome.parse(buf, neurons)
         val semantics = SemanticEngine(File(root, "lexicon.bin").readBytes())
         val network = SpikingNetwork(connectome)
-        val engine = ReasoningEngine(connectome, network, semantics, DopamineSystem())
+        val memory = MemoryEngine(semantics)
+        val concepts = listOf("sinapse", "neurônio", "aprendizado", "memória", "dopamina")
+            .map { semantics.idOf(it) }
+            .filter { it >= 0 }
+        memory.remember(
+            "aula de neurociência",
+            "https://exemplo.test/neuro",
+            "Uma sinapse é o ponto de contato entre dois neurônios por onde o impulso nervoso passa. " +
+                "O aprendizado fortalece essas conexões e a memória depende da plasticidade sináptica. " +
+                "A dopamina sinaliza recompensa e modula a força das sinapses.",
+            concepts,
+        )
+        val engine = ReasoningEngine(connectome, network, semantics, DopamineSystem(), memory)
 
         val prompts = listOf(
             "o que é sinapse?",
+            "como a memória se liga ao aprendizado?",
             "o que é entropia?",
             "o que é amor?",
             "me fale sobre o cérebro",
@@ -49,7 +64,16 @@ class TranscriptTest {
             println("=================================================")
             println("USUÁRIO: $p")
             println("CONECTOMA: ${r.text}")
-            println("   [dopamina=${r.dopamine} reward=${r.reward} spikes=${r.spikes} links=${r.newLinks} ${r.elapsedMs}ms]")
+            println(
+                "   [dopamina=${r.dopamine} reward=${r.reward} spikes=${r.spikes} links=${r.newLinks} " +
+                    "fatos=${r.factsUsed} cobertura=${(r.coverage * 100).toInt()}% " +
+                    "varredura=${r.synapsesSwept} ${r.elapsedMs}ms]"
+            )
+        }
+        for (seed in 0 until 3) {
+            val said = engine.spontaneous(Random(seed.toLong() * 7919), concepts)
+            println("-------------------------------------------------")
+            println("ESPONTÂNEO [${said?.kind}]: ${said?.text}")
         }
     }
 }

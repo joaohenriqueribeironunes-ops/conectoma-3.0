@@ -21,10 +21,14 @@ sinapse, os clarões são disparos. Escreva no campo de baixo.
 
 | você escreve | ele faz |
 |---|---|
-| `o que é sinapse?` | devolve a definição e os conceitos ligados |
-| `como a música se liga à matemática?` | calcula a distância conceitual e mostra o que têm em comum |
+| `o que é sinapse?` | devolve a definição, os conceitos ligados e o que já leu sobre o tema |
+| `como a música se liga à matemática?` | calcula a distância conceitual, mostra o que têm em comum e cita lembranças |
 | `amor é o que move o mundo` | grava essa definição e reforça as conexões usadas |
 | uma palavra desconhecida | aprende na hora, pelo contexto da frase |
+| (silêncio por ~30 s) | ele puxa assunto sozinho: leitura, ligação, lacuna ou pergunta |
+
+Cada resposta percorre **89–93% das sinapses** do conectoma e avalia as 3,75 M
+na varredura de plasticidade. O rodapé mostra a cobertura daquele turno.
 
 **Tela Aprender** — cole um endereço (Wikipédia é o melhor caso) e toque em
 *ler e aprender*, **ou toque em “escolher PDF”** e selecione um arquivo: ele
@@ -65,8 +69,9 @@ mostra as páginas mesmo assim.
 resultado de jogo, notícia de hoje). Ensinar é o caminho: escreva
 `X é ...` ou dê um URL.
 
-⚠️ Quanto mais você conversa, mais as respostas ficam pessoais — a memória é
-salva no aparelho (`plastic.bin` + preferências).
+⚠️ Quanto mais você conversa, mais as respostas ficam pessoais — a memória
+episódica e a plasticidade são salvas no aparelho (`memory.bin`, `plastic.bin`
+e preferências).
 
 ## 5. Privacidade
 

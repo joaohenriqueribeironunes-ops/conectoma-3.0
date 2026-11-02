@@ -2,6 +2,7 @@ package com.conectoma.app
 
 import com.conectoma.app.core.Connectome
 import com.conectoma.app.core.DopamineSystem
+import com.conectoma.app.core.MemoryEngine
 import com.conectoma.app.core.Neuron
 import com.conectoma.app.core.ReasoningEngine
 import com.conectoma.app.core.SemanticEngine
@@ -154,6 +155,30 @@ class EngineTest {
         assertTrue("sem hipóteses", response.hits.isNotEmpty())
         assertTrue("lento demais: ${elapsed}ms", elapsed < 8000)
         assertTrue("dopamina não reagiu", dopamine.level >= 0f)
+    }
+
+    @Test
+    fun answerUsesMostSynapsesAndQuotesWhatItRead() {
+        val dopamine = DopamineSystem()
+        val memory = MemoryEngine(semantics)
+        val ids = listOf("sinapse", "neurônio", "aprendizado", "memória")
+            .map { semantics.idOf(it) }
+            .filter { it >= 0 }
+        val passage = "Uma sinapse é o ponto de contato entre dois neurônios por onde o impulso nervoso passa. " +
+            "O aprendizado fortalece essas conexões e a memória depende dessa plasticidade sináptica."
+        memory.remember("aula de neurociência", "https://exemplo.test/aula", passage, ids)
+        val engine = ReasoningEngine(connectome, network, semantics, dopamine, memory)
+
+        val response = engine.respond("o que é sinapse?")
+        assertTrue("cobertura baixa: ${response.coverage}", response.coverage > 0.5f)
+        assertEquals(connectome.edgeCount, response.synapsesSwept)
+        assertTrue("memória não entrou na resposta", response.factsUsed > 0)
+        assertTrue("fato lido não apareceu: ${response.text}", response.text.contains("O que eu li"))
+        assertTrue("resposta sem detalhe", response.text.length > 200)
+
+        val said = engine.spontaneous(kotlin.random.Random(42), ids)
+        assertNotNull(said)
+        assertTrue("fala espontânea curta: '${said!!.text}'", said.text.length > 40)
     }
 
     @Test

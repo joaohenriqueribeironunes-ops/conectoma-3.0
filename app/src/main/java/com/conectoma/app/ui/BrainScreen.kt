@@ -135,6 +135,43 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
             MetricTile("palavras", stats?.words?.let { nf(it) } ?: "—", "conhecidas", Modifier.weight(1f))
             MetricTile("ligações", stats?.links?.let { nf(it) } ?: "—", "criadas por você", Modifier.weight(1f))
         }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricTile("memória", stats?.memoryEngrams?.let { nf(it) } ?: "—", "materiais lidos", Modifier.weight(1f))
+            MetricTile("fatos", stats?.memoryFacts?.let { nf(it) } ?: "—", "prontos para citar", Modifier.weight(1f))
+        }
+
+        Spacer(Modifier.height(14.dp))
+        GlassCard(Modifier.fillMaxWidth(), tint = Ink.aqua) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("memória episódica", style = Type.headline)
+                    Text(
+                        "o que ele leu fica guardado e volta quando o assunto aparece",
+                        style = Type.callout,
+                    )
+                }
+                Pill("${stats?.memoryFacts ?: 0} fatos", Ink.aqua)
+            }
+            val titles = runCatching { vm.brain.memory.titles.take(5) }.getOrDefault(emptyList())
+            if (titles.isEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text("Nada lido ainda. Cole um URL ou escolha um PDF na aba aprender.", style = Type.callout.copy(color = Ink.dim))
+            }
+            titles.forEach { title ->
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(5.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Ink.aqua)
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Text(title, style = Type.body.copy(color = Ink.paper.copy(alpha = 0.88f)), maxLines = 2)
+                }
+            }
+        }
 
         Spacer(Modifier.height(18.dp))
         SectionLabel("conexões que você fortaleceu")

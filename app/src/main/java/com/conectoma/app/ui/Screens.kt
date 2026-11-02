@@ -220,6 +220,21 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
             MetricTile("palavras", stats?.words?.let { nf(it) } ?: "—", "léxico + novas", Modifier.weight(1f))
             MetricTile("links", stats?.links?.let { nf(it) } ?: "—", "plasticidade", Modifier.weight(1f))
         }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricTile(
+                "memória",
+                stats?.memoryEngrams?.let { nf(it) } ?: "—",
+                "${stats?.memoryFacts ?: 0} fatos lidos",
+                Modifier.weight(1f),
+            )
+            MetricTile(
+                "sinapses ativas",
+                stats?.coverage?.let { "${(it * 100).toInt()}%" } ?: "—",
+                "no último pensamento",
+                Modifier.weight(1f),
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
         GlassCard(Modifier.fillMaxWidth(), tint = Ink.aqua) {
@@ -245,6 +260,27 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
                     onClick = { vm.saveNow() },
                 ) { Text("gravar memória", style = Type.headline.copy(fontSize = 13.sp)) }
             }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        GlassCard(Modifier.fillMaxWidth(), tint = Ink.violet) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("voz espontânea", style = Type.headline)
+                    Text(
+                        if (state.spontaneousEnabled)
+                            "ele puxa assunto sozinho quando fica em silêncio · ${stats?.spontaneous ?: 0} falas"
+                        else "desligada — ele só responde quando você fala",
+                        style = Type.callout,
+                    )
+                }
+                Toggle(state.spontaneousEnabled) { vm.setSpontaneous(it) }
+            }
+            Spacer(Modifier.height(12.dp))
+            GlassButton(
+                accent = Ink.violet,
+                onClick = { vm.spontaneousOnce() },
+            ) { Text("falar sem eu perguntar", style = Type.headline.copy(fontSize = 13.sp)) }
         }
 
         if (state.autonomyLog.isNotEmpty()) {
@@ -299,7 +335,9 @@ fun ChatScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
             Column(Modifier.weight(1f)) {
                 Text("assistente", style = Type.largeTitle)
                 Text(
-                    "pergunte o que quiser — ele aprende com cada conversa",
+                    if (state.spontaneousEnabled)
+                        "pergunte — ou espere: ele também puxa assunto sozinho"
+                    else "pergunte o que quiser — ele aprende com cada conversa",
                     style = Type.callout,
                 )
             }
@@ -781,6 +819,26 @@ fun PlasticityScreen(state: UiState, vm: ConectomaViewModel, contentPadding: Pad
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MetricTile("disparos", stats?.spikes?.let { nf(it) } ?: "—", "spikes acumulados", Modifier.weight(1f))
             MetricTile("eventos", stats?.plasticityEvents?.let { nf(it) } ?: "—", "escritas hebbianas", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricTile(
+                "cobertura",
+                stats?.coverage?.let { "${(it * 100).toInt()}%" } ?: "—",
+                "conectoma percorrido",
+                Modifier.weight(1f),
+            )
+            MetricTile(
+                "varredura",
+                stats?.synapsesSwept?.let { nf(it) } ?: "—",
+                "sinapses avaliadas",
+                Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricTile("memória", stats?.memoryEngrams?.let { nf(it) } ?: "—", "materiais lidos", Modifier.weight(1f))
+            MetricTile("fatos", stats?.memoryFacts?.let { nf(it) } ?: "—", "prontos para citar", Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(18.dp))

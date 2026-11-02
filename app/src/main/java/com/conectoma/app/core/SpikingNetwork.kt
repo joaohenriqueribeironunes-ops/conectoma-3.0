@@ -28,6 +28,15 @@ class SpikingNetwork(val connectome: Connectome) {
     private val preTrace = FloatArray(n)
     private val postRecent = FloatArray(n)
 
+    /** quais sinapses participaram do último pensamento (bitset de 3,75 M) */
+    private val touched = LongArray((edgeCount + 63) ushr 6)
+    private var touchedCount = 0L
+
+    var lastSweepExamined = 0
+        private set
+    var lastSweepChanged = 0
+        private set
+
     var excGain = 2.6f
     var inhGain = 3.4f
     var dopamine = 0f
@@ -54,6 +63,28 @@ class SpikingNetwork(val connectome: Connectome) {
         lastSpike.fill(-1000)
         step = 0
     }
+
+    // -------------------------------------------------------------- coverage
+    /** zera o mapa de sinapses que participaram deste pensamento */
+    fun resetCoverage() {
+        touched.fill(0L)
+        touchedCount = 0L
+    }
+
+    private fun touch(edge: Int) {
+        if (edge < 0 || edge >= edgeCount) return
+        val word = edge ushr 6
+        val bit = 1L shl (edge and 63)
+        if (touched[word] and bit == 0L) {
+            touched[word] = touched[word] or bit
+            touchedCount++
+        }
+    }
+
+    /** fração 0..1 do conectoma que o último pensamento percorreu */
+    fun coverage(): Float = if (edgeCount == 0) 0f else (touchedCount.toFloat() / edgeCount)
+
+    fun touchedSynapses(): Long = touchedCount
 
     fun simulate(steps: Int = 12, dt: Float = 1f) {
         repeat(steps) { step(dt) }
@@ -94,6 +125,7 @@ class SpikingNetwork(val connectome: Connectome) {
             val start = connectome.outStart(src)
             val end = connectome.outEnd(src)
             for (e in start until end) {
+                touch(e)
                 val dst = connectome.target(e)
                 val w = connectome.strength(e) * connectome.plastic[e]
                 if (connectome.isInhibitory(e)) {
@@ -132,6 +164,52 @@ class SpikingNetwork(val connectome: Connectome) {
         connectome.plastic[edge] = if (p < 0.15f) 0.15f else if (p > 4.5f) 4.5f else p
     }
 
+    /**
+     * Varredura global de plasticidade.
+     *
+     * O STDP normal só toca as sinapses que o disparo alcançou. Aqui o motor
+     * percorre as 3,75 milhões de sinapses e aplica a regra de três fatores em
+     * todas as que tiveram pré e pós ativos — ou seja, a maior parte do
+     * conectoma participa do aprendizado a cada turno, não só o caminho curto.
+     *
+     * @return quantas sinapses foram efetivamente modificadas
+     */
+    fun sweepPlasticity(rate: Float = 0.0011f): Int {
+        if (!plasticityEnabled) return 0
+        val da = dopamine.coerceAtLeast(0f)
+        val gate = 0.12f + 2.1f * da
+        var changed = 0
+        for (e in 0 until edgeCount) {
+            val pre = activity[connectome.source(e)]
+            val post = activity[connectome.target(e)]
+            if (pre < 0.08f || post < 0.08f) continue
+            val co = pre * post
+            val dw = rate * gate * co * (0.5f + connectome.dopamine(e)) * (0.7f + connectome.strength(e))
+            if (dw > 0.00002f) {
+                adjust(e, dw)
+                changed++
+            }
+        }
+        lastSweepExamined = edgeCount
+        lastSweepChanged = changed
+        if (changed > 0) lastPotentiation = changed
+        balance()
+        return changed
+    }
+
+    /** mantém o peso médio perto do valor nativo depois de uma varredura ampla */
+    fun balance(target: Float = 1.02f) {
+        if (edgeCount == 0) return
+        var sum = 0.0
+        for (p in connectome.plastic) sum += p
+        val mean = (sum / edgeCount).toFloat()
+        if (mean <= 0f) return
+        if (mean > target * 1.35f || mean < target * 0.72f) {
+            val factor = target / mean
+            for (i in connectome.plastic.indices) connectome.plastic[i] *= factor
+        }
+    }
+
     /** homeostatic rescaling keeps the network from saturating or dying */
     fun homeostasis(stepCount: Int) {
         if (stepCount % 400 != 0) return
@@ -156,6 +234,18 @@ class SpikingNetwork(val connectome: Connectome) {
         repeat(count) {
             val node = rng.nextInt(n)
             current[node] += 3.5f
+        }
+    }
+
+    /**
+     * Injeta corrente em uma fração ampla da população. Usado para que o
+     * pensamento não fique preso às 34 sinapses de uma palavra: a cada passo
+     * uma amostra grande de neurônios participa e propaga pelos seus contatos.
+     */
+    fun injectBroad(count: Int, amount: Float, rng: Random) {
+        val c = count.coerceIn(0, n)
+        repeat(c) {
+            current[rng.nextInt(n)] += amount
         }
     }
 

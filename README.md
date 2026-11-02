@@ -24,9 +24,14 @@ Não é preciso instalar SDK, Java ou nada no PC. O APK é auto-contido.
 **Assistente** — o orbe é o conectoma vivo: cada ponto é um neurônio real, cada
 linha uma sinapse real, e os clarões são disparos. Escreva embaixo.
 
-- `o que é sinapse?` → definição + conceitos ligados
-- `como a música se liga à matemática?` → distância conceitual e vizinhos comuns
+- `o que é sinapse?` → definição + conceitos ligados + o que ele já leu sobre o tema
+- `como a música se liga à matemática?` → distância conceitual, vizinhos comuns e lembranças
 - `amor é o que move o mundo` → ele grava a definição e reforça as conexões
+- **silêncio** → depois de ~30 s sem pergunta, ele puxa assunto sozinho: uma leitura
+  antiga, uma ligação forte, uma lacuna de conhecimento ou uma pergunta própria
+
+Cada resposta percorre **89–93% das 3,75 milhões de sinapses** e avalia todas elas
+na varredura de plasticidade; o rodapé da mensagem mostra a cobertura do turno.
 
 **Aprender** — cole um URL (Wikipédia funciona muito bem) **ou escolha um PDF**.
 Ele lê a página/arquivo, extrai conceitos, cria ligações e aprende palavras novas.
@@ -62,6 +67,20 @@ a calculadora de distância conceitual entre duas palavras.
   já existe — cada conceito novo é ancorado nos vizinhos semânticos mais próximos
   (peso ∝ similaridade) e pares distantes que aparecem juntos viram "pontes".
   Sem isso, um PDF deixaria palavras soltas, ligadas só à própria página.
+- **Memória episódica (`MemoryEngine`)**: cada URL, PDF ou conversa relevante vira
+  um engrama com título, conceitos e até seis frases informativas. Quando o assunto
+  volta, o assistente recupera as frases e cita a fonte na resposta — é o que
+  transforma “conheço a palavra” em “eu li isso e posso te contar”.
+- **Pensamento largo (`ReasoningEngine`/`SpikingNetwork`)**: cada palavra acende
+  uma assembleia de ~96 neurônios (antes eram 34). A cada passo, uma amostra de
+  ~6% da população também é injetada, então o disparo se espalha pelo conectoma
+  inteiro; ao final, uma varredura global aplica STDP de três fatores nas
+  **3,75 M de sinapses**. A cobertura do turno aparece na resposta e na tela
+  Cérebro.
+- **Voz espontânea**: com o interruptor ligado, depois de 30 s de silêncio ele
+  fala sozinho a cada ~45 s — lembrança de leitura, ligação recém-fortalecida,
+  lacuna que quer estudar ou associação improvável. Também há o botão
+  “falar sem eu perguntar”.
 - **Motor autônomo (`AutonomousEngine`)**: a pauta não é uma lista fixa. Ele
   escolhe a próxima tarefa do estado atual do conhecimento — consolidar o que
   acabou de entrar, estudar uma **lacuna** (palavra que aprendeu lendo e ainda não
@@ -83,7 +102,8 @@ o do léxico embutido.
 
 Nenhum dado sai do aparelho por padrão. A rede só é usada quando você manda ler
 um URL ou liga o modo autônomo (que consulta resumos do Wikipédia). A memória
-aprendida fica em `SharedPreferences` + `files/plastic.bin`, no próprio app.
+aprendida fica em `SharedPreferences`, `files/plastic.bin` e `files/memory.bin`,
+no próprio app.
 
 ## Construir do zero
 
@@ -115,8 +135,8 @@ Testes de motor (rodam na JVM, sem aparelho):
 ```
 
 11 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização e
-o diálogo do assistente; somados aos de formatação, PDF, consolidação e motor
-autônomo, são **25 testes**.
+o diálogo do assistente; somados aos de formatação, PDF, consolidação, memória
+episódica e motor autônomo, são **28 testes**.
 
 ## Créditos e licenças
 

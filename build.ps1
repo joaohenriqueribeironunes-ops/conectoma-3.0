@@ -1,4 +1,4 @@
-# Compila o APK de release.
+﻿# Compila o APK de release.
 # Uso: powershell -ExecutionPolicy Bypass -File build.ps1
 $ErrorActionPreference = "Stop"
 
