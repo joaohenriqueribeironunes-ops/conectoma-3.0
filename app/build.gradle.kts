@@ -14,8 +14,8 @@ android {
         applicationId = "com.conectoma.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "3.1"
+        versionCode = 9
+        versionName = "3.2"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -71,6 +71,7 @@ android {
     testOptions {
         unitTests.all {
             it.maxHeapSize = "3g"
+            it.environment("CONECTOMA_PDF_TEST", System.getenv("CONECTOMA_PDF_TEST") ?: "")
             it.testLogging { events("passed", "failed", "skipped") }
         }
     }

@@ -28,10 +28,11 @@ linha uma sinapse real, e os clarões são disparos. Escreva embaixo.
 - `como a música se liga à matemática?` → distância conceitual e vizinhos comuns
 - `amor é o que move o mundo` → ele grava a definição e reforça as conexões
 
-**Aprender** — cole um URL (Wikipédia funciona muito bem). Ele lê a página,
-extrai conceitos, cria ligações e aprende palavras novas. O interruptor de
-**aprendizado autônomo** faz ele buscar temas sozinho e continuar mesmo com o
-app fechado (serviço em primeiro plano).
+**Aprender** — cole um URL (Wikipédia funciona muito bem) **ou escolha um PDF**.
+Ele lê a página/arquivo, extrai conceitos, cria ligações e aprende palavras novas.
+No caso do PDF, as primeiras páginas são renderizadas na tela para você ver o que
+ele está lendo. O interruptor de **aprendizado autônomo** faz ele buscar temas
+sozinho e continuar mesmo com o app fechado (serviço em primeiro plano).
 
 **Cérebro** — dopamina acumulada, conexões que você fortaleceu, busca no
 dicionário e a calculadora de distância conceitual entre duas palavras.
@@ -52,6 +53,10 @@ dicionário e a calculadora de distância conceitual entre duas palavras.
 - **A semântica usa vetores reais** (Word2Vec CBOW 50d do NILC/USP,
   929 mil palavras), reduzidos às 35.311 do léxico; a distância combina cosseno,
   geodésica no grafo de conceitos aprendido e forma da palavra.
+- **PDF é lido no aparelho** por um extrator próprio (`PdfText.kt`, Kotlin puro,
+  sem bibliotecas): decodifica FlateDecode, fontes com ToUnicode CMap, strings
+  literais/hexadecimais e o posicionamento Td/Tm/TJ. As páginas são renderizadas
+  com `PdfRenderer` para visualização.
 - **As definições vêm do Wikcionário em português** (28 mil verbetes) mais um
   glossário de neurociência curado à mão.
 

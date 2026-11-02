@@ -27,9 +27,11 @@ sinapse, os clarões são disparos. Escreva no campo de baixo.
 | uma palavra desconhecida | aprende na hora, pelo contexto da frase |
 
 **Tela Aprender** — cole um endereço (Wikipédia é o melhor caso) e toque em
-*ler e aprender*. Ele extrai conceitos, cria ligações, aprende palavras novas e
-dispara dopamina. O interruptor **aprendizado autônomo** faz ele escolher temas
-sozinho e continuar estudando com o app fechado.
+*ler e aprender*, **ou toque em “escolher PDF”** e selecione um arquivo: ele
+mostra as primeiras páginas, extrai o texto e aprende com ele. Extrai conceitos,
+cria ligações, aprende palavras novas e dispara dopamina. O interruptor
+**aprendizado autônomo** faz ele escolher temas sozinho e continuar estudando com
+o app fechado.
 
 **Tela Cérebro** — dopamina acumulada, as conexões que você fortaleceu, busca no
 dicionário e a calculadora de distância entre duas palavras.
@@ -41,6 +43,10 @@ o uso: cada conversa e cada página criam conexões permanentes.
 
 ✅ O conectoma, os neurotransmissores e a plasticidade são **dados reais** do
 experimento FlyWire, não enfeite.
+
+📄 PDFs: funciona com PDF de texto normal (artigos, apostilas, livros, e-mails
+salvos). PDF **escaneado** (só imagem) não tem texto para extrair — ele avisa e
+mostra as páginas mesmo assim.
 
 ⚠️ Ele **não é um ChatGPT**: não sabe fatos do mundo (quem descobriu o Brasil,
 resultado de jogo, notícia de hoje). Ensinar é o caminho: escreva

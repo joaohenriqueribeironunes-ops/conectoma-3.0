@@ -33,6 +33,11 @@ data class UiState(
     val lastReport: String? = null,
     val pulse: Int = 0,
     val thinking: Int = 0,
+    val pdfName: String? = null,
+    val pdfPages: Int = 0,
+    val pdfChars: Int = 0,
+    val pdfNote: String? = null,
+    val pdfPreviews: List<android.graphics.Bitmap> = emptyList(),
 )
 
 class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
@@ -150,8 +155,61 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun autonomousOnce() {
-        viewModelScope.launch(Dispatchers.Default) {
+    /** Lê um PDF escolhido no seletor do sistema, mostra as páginas e aprende com o texto. */
+    fun learnPdf(uri: android.net.Uri) {
+        _state.update { it.copy(busy = true, pdfNote = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = runCatching { com.conectoma.app.core.PdfOnDevice.read(getApplication(), uri) }
+            val doc = loaded.getOrNull()
+            if (doc == null) {
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        pdfNote = "falhou ao abrir: ${loaded.exceptionOrNull()?.message ?: "erro"}",
+                    )
+                }
+                return@launch
+            }
+            _state.update {
+                it.copy(
+                    pdfName = doc.displayName,
+                    pdfPages = doc.pageCount,
+                    pdfChars = doc.chars,
+                    pdfPreviews = doc.previews,
+                    pdfNote = doc.note,
+                )
+            }
+            if (doc.text.length < 80) {
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        lastReport = "${doc.displayName}: sem texto selecionável (${doc.pageCount} páginas só de imagem)",
+                    )
+                }
+                return@launch
+            }
+            val report = brain.ingestText("PDF: ${doc.displayName}", "pdf://${doc.displayName}", doc.text)
+            _state.update {
+                it.copy(
+                    busy = false,
+                    ingests = (listOf(report) + it.ingests).take(12),
+                    lastReport = "“${doc.displayName}” — ${report.newWords} palavras novas, " +
+                        "${report.links} sinapses, ${doc.chars} caracteres lidos",
+                    pulse = if (report.reward > 0.5f) it.pulse + 1 else it.pulse,
+                    stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
+                    messages = it.messages + ChatMessage(
+                        ++seq, false,
+                        "Li **${doc.displayName}** (${doc.pageCount} páginas). " +
+                            "Extraí ${Numbers.grouped(doc.chars)} caracteres, aprendi ${report.newWords} palavras " +
+                            "e reforcei ${report.links} sinapses. O que você quer saber sobre ele?",
+                        "PDF · ${report.concepts.take(4).joinToString(" · ")}",
+                    ),
+                )
+            }
+        }
+    }
+
+    fun autonomousOnce() {        viewModelScope.launch(Dispatchers.Default) {
             _state.update { it.copy(thinking = it.thinking + 1) }
             val media = brain.autonomousStep(allowNetwork = true)
             _state.update {

@@ -1,9 +1,12 @@
 package com.conectoma.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,7 +45,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -440,6 +445,9 @@ fun formatBold(text: String) = buildAnnotatedString {
 @Composable
 fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingValues) {
     var url by remember { mutableStateOf("") }
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.learnPdf(uri)
+    }
     val scroll = rememberScrollState()
     Column(
         Modifier
@@ -479,6 +487,58 @@ fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
             Spacer(Modifier.height(14.dp))
             Text(it, style = Type.callout.copy(color = Ink.mist))
         }
+
+        Spacer(Modifier.height(18.dp))
+        GlassCard(Modifier.fillMaxWidth(), tint = Ink.violet) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("ou leia um PDF", style = Type.headline)
+                    Text(
+                        "mostro as páginas e aprendo com o texto delas",
+                        style = Type.callout,
+                    )
+                }
+                Pill("PDF", Ink.amber)
+            }
+            Spacer(Modifier.height(12.dp))
+            GlassButton(
+                accent = Ink.violet,
+                enabled = !state.busy,
+                onClick = { pdfLauncher.launch(arrayOf("application/pdf")) },
+            ) {
+                Text("escolher PDF", style = Type.headline.copy(fontSize = 14.sp))
+            }
+            if (state.pdfName != null) {
+                Spacer(Modifier.height(14.dp))
+                Text(state.pdfName, style = Type.headline, maxLines = 2)
+                Text(
+                    "${state.pdfPages} páginas · ${nf(state.pdfChars)} caracteres lidos",
+                    style = Type.caption.copy(color = Ink.dim),
+                )
+                if (state.pdfPreviews.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.pdfPreviews.take(3).forEach { page ->
+                            Image(
+                                bitmap = page.asImageBitmap(),
+                                contentDescription = "página do PDF",
+                                modifier = Modifier
+                                    .width(84.dp)
+                                    .height(116.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .border(0.8.dp, Ink.strokeStrong, RoundedCornerShape(10.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
+                    }
+                }
+                state.pdfNote?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, style = Type.caption.copy(color = Ink.amber))
+                }
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
         SectionLabel("sessões")
         Spacer(Modifier.height(10.dp))
