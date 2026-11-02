@@ -34,8 +34,9 @@ No caso do PDF, as primeiras páginas são renderizadas na tela para você ver o
 ele está lendo. O interruptor de **aprendizado autônomo** faz ele buscar temas
 sozinho e continuar mesmo com o app fechado (serviço em primeiro plano).
 
-**Cérebro** — dopamina acumulada, conexões que você fortaleceu, busca no
-dicionário e a calculadora de distância conceitual entre duas palavras.
+**Cérebro** — dopamina acumulada, **motor autônomo** (liga/desliga, tarefas,
+leituras, pontes e insights), conexões que você fortaleceu, busca no dicionário e
+a calculadora de distância conceitual entre duas palavras.
 
 ## O que é real aqui
 
@@ -57,6 +58,16 @@ dicionário e a calculadora de distância conceitual entre duas palavras.
   sem bibliotecas): decodifica FlateDecode, fontes com ToUnicode CMap, strings
   literais/hexadecimais e o posicionamento Td/Tm/TJ. As páginas são renderizadas
   com `PdfRenderer` para visualização.
+- **Consolidação (`ConsolidationEngine`)**: todo material lido é costurado ao que
+  já existe — cada conceito novo é ancorado nos vizinhos semânticos mais próximos
+  (peso ∝ similaridade) e pares distantes que aparecem juntos viram "pontes".
+  Sem isso, um PDF deixaria palavras soltas, ligadas só à própria página.
+- **Motor autônomo (`AutonomousEngine`)**: a pauta não é uma lista fixa. Ele
+  escolhe a próxima tarefa do estado atual do conhecimento — consolidar o que
+  acabou de entrar, estudar uma **lacuna** (palavra que aprendeu lendo e ainda não
+  tem significado, ou palavra comum que nunca entrou em nenhuma ligação) ou
+  aproximar dois conceitos distantes quando está sem rede. Roda no app e em
+  segundo plano via serviço em primeiro plano.
 - **As definições vêm do Wikcionário em português** (28 mil verbetes) mais um
   glossário de neurociência curado à mão.
 
@@ -104,7 +115,8 @@ Testes de motor (rodam na JVM, sem aparelho):
 ```
 
 11 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização e
-o diálogo do assistente.
+o diálogo do assistente; somados aos de formatação, PDF, consolidação e motor
+autônomo, são **25 testes**.
 
 ## Créditos e licenças
 

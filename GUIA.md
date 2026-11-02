@@ -1,4 +1,4 @@
-# Conectoma 3.0 — guia rápido
+﻿# Conectoma 3.0 — guia rápido
 
 Um assistente Android que pensa sobre o **conectoma real do cérebro da mosca**.
 Tudo roda no celular: sem conta, sem nuvem, sem instalar nada no PC.
@@ -33,10 +33,23 @@ cria ligações, aprende palavras novas e dispara dopamina. O interruptor
 **aprendizado autônomo** faz ele escolher temas sozinho e continuar estudando com
 o app fechado.
 
-**Tela Cérebro** — dopamina acumulada, as conexões que você fortaleceu, busca no
-dicionário e a calculadora de distância entre duas palavras.
+**Tela Cérebro** — dopamina acumulada, o **motor autônomo** (ligar/desligar e
+acompanhar o que ele andou fazendo sozinho), as conexões que você fortaleceu,
+busca no dicionário e a calculadora de distância entre duas palavras.
 
-## 3. O que esperar (e o que não esperar)
+## 3. Ele aprende sozinho
+
+Depois de cada PDF ou URL, ele **consolida**: liga o que acabou de ler ao que já
+sabia (cada conceito novo é ancorado nos vizinhos mais próximos) e cria **pontes**
+entre ideias distantes que apareceram juntas no mesmo texto.
+
+Com o **motor autônomo** ligado, ele continua sem você: escolhe o que estudar a
+partir das próprias lacunas — palavras que aprendeu lendo e ainda não têm
+significado, palavras comuns que nunca entraram em nenhuma ligação — busca o
+resumo no Wikipédia, lê, consolida e repete. A cada 90 segundos, com o app aberto
+ou em segundo plano.
+
+## 4. O que esperar (e o que não esperar)
 
 ✅ Ele entende **conceitos, definições, semelhanças e relações**, e melhora com
 o uso: cada conversa e cada página criam conexões permanentes.
@@ -55,12 +68,12 @@ resultado de jogo, notícia de hoje). Ensinar é o caminho: escreva
 ⚠️ Quanto mais você conversa, mais as respostas ficam pessoais — a memória é
 salva no aparelho (`plastic.bin` + preferências).
 
-## 4. Privacidade
+## 5. Privacidade
 
 Nada sai do celular por padrão. A internet só é usada quando **você** manda ler
 um URL ou quando liga o modo autônomo (que consulta resumos do Wikipédia).
 
-## 5. Se algo der errado
+## 6. Se algo der errado
 
 - **Tela branca na abertura**: feche e abra de novo; a primeira carga é a mais pesada.
 - **"App não instalado"**: desinstale versões antigas com o mesmo nome e confira

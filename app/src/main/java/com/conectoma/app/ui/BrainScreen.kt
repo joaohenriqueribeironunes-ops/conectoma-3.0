@@ -1,6 +1,8 @@
 package com.conectoma.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -66,6 +70,57 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                         "cada aprendizado dispara um impulso que reforça as conexões usadas",
                         style = Type.caption.copy(color = Ink.dim, letterSpacing = 0.sp),
                     )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        GlassCard(Modifier.fillMaxWidth(), tint = Ink.aqua) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("motor autônomo", style = Type.headline)
+                    Text(
+                        if (state.autonomyEnabled)
+                            "trabalhando sozinho · ${stats?.lastTask ?: "iniciando"}"
+                        else "parado — ele só aprende quando você manda",
+                        style = Type.callout,
+                    )
+                }
+                Toggle(state.autonomyEnabled) { vm.setAutonomy(it) }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Pill("${stats?.autonomyTasks ?: 0} tarefas", Ink.cyan)
+                Pill("${stats?.autonomyReads ?: 0} leituras", Ink.violet)
+                Pill("${stats?.autonomyBridges ?: 0} pontes", Ink.amber)
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Pill("${stats?.autonomyInsights ?: 0} insights", Ink.aqua)
+                Pill("${stats?.links ?: 0} ligações totais", Ink.mist)
+            }
+            Spacer(Modifier.height(12.dp))
+            GlassButton(
+                accent = Ink.indigo,
+                enabled = !state.busy,
+                onClick = { vm.autonomousOnce() },
+            ) {
+                Text("rodar uma tarefa agora", style = Type.headline.copy(fontSize = 13.sp))
+            }
+            if (state.autonomyLog.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                state.autonomyLog.take(3).forEach { line ->
+                    Row(Modifier.padding(vertical = 3.dp)) {
+                        Box(
+                            Modifier
+                                .padding(top = 6.dp)
+                                .size(5.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Ink.aqua)
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Text(line, style = Type.caption.copy(color = Ink.paper.copy(alpha = 0.82f), letterSpacing = 0.sp))
+                    }
                 }
             }
         }

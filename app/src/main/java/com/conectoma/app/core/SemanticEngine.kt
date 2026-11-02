@@ -279,13 +279,74 @@ class SemanticEngine(bytesIn: ByteArray) {
     fun nearest(query: String, k: Int = 8): List<Pair<Int, Float>> {
         val q = idOf(query)
         if (q < 0) return emptyList()
-        val scored = ArrayList<Pair<Int, Float>>(baseCount)
-        for (i in 0 until baseCount) {
-            if (i == q) continue
-            scored.add(i to cosine(q, i))
+        return nearestTo(q, k, emptySet(), includeLearned = false)
+    }
+
+    /**
+     * Top-k mais parecidos com [id]. Usado pela consolidação para ancorar o que
+     * acabou de ser aprendido no conhecimento que já existe.
+     */
+    fun nearestTo(
+        id: Int,
+        k: Int = 6,
+        exclude: Set<Int> = emptySet(),
+        includeLearned: Boolean = true,
+    ): List<Pair<Int, Float>> {
+        if (id < 0) return emptyList()
+        val best = ArrayList<Pair<Int, Float>>(k + 1)
+        val limit = if (includeLearned) names.size else baseCount
+        for (i in 0 until limit) {
+            if (i == id || i in exclude) continue
+            val sim = cosine(id, i)
+            if (best.size < k) {
+                best.add(i to sim)
+                best.sortBy { it.second }
+            } else if (sim > best[0].second) {
+                best[0] = i to sim
+                best.sortBy { it.second }
+            }
+        }
+        best.reverse()
+        return best
+    }
+
+    /**
+     * Onde o conhecimento está furado, em ordem de prioridade:
+     *  3. palavra que ele aprendeu lendo e ainda não tem significado;
+     *  2. forma flexionada muito frequente (sabe a flexão, não o conceito);
+     *  1. palavra comum que nunca entrou em nenhuma ligação plástica.
+     *
+     * Isso é o que o motor autônomo usa como pauta de estudo.
+     */
+    fun knowledgeGaps(limit: Int = 900): List<Int> {
+        val touched = HashSet<Int>(conceptLinks.size)
+        for (k in conceptLinks.keys) {
+            touched.add((k ushr 32).toInt())
+            touched.add(k.toInt())
+        }
+        val scored = ArrayList<Pair<Int, Int>>(512)
+        for (i in 0 until names.size) {
+            val d = defs.getOrElse(i) { "" }
+            val freq = if (i < baseCount) freqArr.getOrElse(i) { 0 } else 0
+            val priority = when {
+                d.isBlank() -> 3
+                d.startsWith("forma flexionada de") && freq >= 200 -> 2
+                i < 3000 && i !in touched -> 1
+                else -> 0
+            }
+            if (priority > 0) scored.add(i to (priority * 10_000_000 + freq.coerceAtMost(9_999_999)))
         }
         scored.sortByDescending { it.second }
-        return scored.take(k)
+        return scored.take(limit).map { it.first }
+    }
+
+    /** quantas ligações plásticas um conceito tem (para medir isolamento) */
+    fun linkDegree(id: Int): Int {
+        var count = 0
+        for (k in conceptLinks.keys) {
+            if ((k ushr 32).toInt() == id || k.toInt() == id) count++
+        }
+        return count / 2
     }
 
     // ------------------------------------------------------------------ learning

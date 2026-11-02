@@ -48,7 +48,7 @@ class AutonomousLearningService : Service() {
                 if (!brain.ready) brain.initialize { stage, _ -> update("carregando: $stage") }
                 var cycles = 0
                 while (isActive) {
-                    delay(4 * 60_000L)
+                    delay(90_000L)
                     if (!brain.ready) continue
                     val result = runCatching { brain.autonomousStep(allowNetwork = true) }.getOrNull()
                         ?: continue

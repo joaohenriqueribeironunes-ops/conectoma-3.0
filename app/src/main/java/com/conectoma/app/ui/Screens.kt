@@ -561,6 +561,21 @@ fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                     Pill("${report.links} sinapses", Ink.violet)
                     Pill("${report.definitions} definições", Ink.amber)
                 }
+                if (report.anchors > 0 || report.bridges > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (report.anchors > 0) Pill("${report.anchors} elos com o que já sabia", Ink.aqua)
+                        if (report.bridges > 0) Pill("${report.bridges} pontes", Ink.rose)
+                    }
+                }
+                report.insights.firstOrNull()?.let { bridge ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "ponte nova: $bridge",
+                        style = Type.caption.copy(color = Ink.amber, letterSpacing = 0.sp),
+                        maxLines = 2,
+                    )
+                }
                 if (report.concepts.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     Text(

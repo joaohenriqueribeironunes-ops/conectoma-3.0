@@ -23,7 +23,16 @@ class Brain private constructor(val context: Context) {
         private set
     lateinit var reasoning: ReasoningEngine
         private set
+    lateinit var consolidation: ConsolidationEngine
+        private set
+    lateinit var autonomy: AutonomousEngine
+        private set
     val dopamine = DopamineSystem()
+
+    /** serializa todo acesso ao grafo semântico (chat, ingestão e autonomia) */
+    private val learningLock = Any()
+    private val recentConcepts = ArrayList<Int>(64)
+    private var pendingConsolidation = false
 
     /** safe accessors: the UI can ask before loading finishes */
     val connectomeOrNull: Connectome? get() = if (this::connectome.isInitialized) connectome else null
@@ -53,6 +62,8 @@ class Brain private constructor(val context: Context) {
             onStage("carregando o léxico", 0.62f)
             semantics = SemanticEngine(context.assets.open("lexicon.bin").use { it.readBytes() })
             reasoning = ReasoningEngine(connectome, network, semantics, dopamine)
+            consolidation = ConsolidationEngine(semantics)
+            autonomy = AutonomousEngine(semantics)
             onStage("reconstruindo a memória", 0.82f)
             restore()
             onStage("pronto", 1f)
@@ -64,12 +75,12 @@ class Brain private constructor(val context: Context) {
     }
 
     // ------------------------------------------------------------------ dialogue
-    fun ask(text: String): ReasoningEngine.Response {
+    fun ask(text: String): ReasoningEngine.Response = synchronized(learningLock) {
         val response = reasoning.respond(text)
         totalLearningEvents++
         totalSpikes += response.spikes
         remember(response)
-        return response
+        response
     }
 
     // ------------------------------------------------------------------ web learning
@@ -83,6 +94,9 @@ class Brain private constructor(val context: Context) {
         val concepts: List<String>,
         val reward: Float,
         val error: String? = null,
+        val anchors: Int = 0,
+        val bridges: Int = 0,
+        val insights: List<String> = emptyList(),
     )
 
     suspend fun ingest(url: String): IngestReport = withContext(Dispatchers.IO) {
@@ -99,7 +113,10 @@ class Brain private constructor(val context: Context) {
         withContext(Dispatchers.Default) { absorb(title, url, text) }
 
     /** the core text-learning pass: co-occurrence, definitions, assemblies */
-    private fun absorb(title: String, url: String, text: String): IngestReport {
+    private fun absorb(title: String, url: String, text: String): IngestReport =
+        synchronized(learningLock) { absorbLocked(title, url, text) }
+
+    private fun absorbLocked(title: String, url: String, text: String): IngestReport {
         val sentences = Tokenizer.sentences(text).take(700)
         var newWords = 0
         var links = 0
@@ -156,9 +173,20 @@ class Brain private constructor(val context: Context) {
             reasoning.think(focus, cands, steps = 14)
         }
 
+        // costura o material novo no conhecimento antigo
+        val conceptList = concepts.toList()
+        recentConcepts.addAll(conceptList)
+        while (recentConcepts.size > 160) recentConcepts.removeAt(0)
+        pendingConsolidation = conceptList.size >= 3
+        val con = consolidation.consolidate(conceptList)
+        if (con.insights.isNotEmpty()) dopamine.reward(0.4f + con.score, "consolidação")
+
         return IngestReport(
             title, url, text.length, newWords, links, definitions,
             concepts.map { semantics.name(it) }.take(12), reward,
+            anchors = con.anchors,
+            bridges = con.bridges,
+            insights = con.insights.map { "${it.first} ↔ ${it.second}" },
         )
     }
 
@@ -188,35 +216,62 @@ class Brain private constructor(val context: Context) {
         val insight: Float,
         val description: String,
         val exploration: ReasoningEngine.Exploration?,
+        val task: String = "",
     )
 
     suspend fun autonomousStep(allowNetwork: Boolean): Autonomy = withContext(Dispatchers.Default) {
-        val exploration = reasoning.explore(rng)
+        val task = autonomy.nextTask(pendingConsolidation, allowNetwork, rng)
+        autonomy.record(task)
         var topic = ""
         var chars = 0
         var newWords = 0
-        if (allowNetwork) {
-            val candidates = Web.CURRICULUM.filter { it !in learnedTopics }
-            val pick = candidates.randomOrNull(rng) ?: Web.CURRICULUM.random(rng)
-            val page = runCatching { Web.wikipediaSummary(pick) }.getOrNull()
-            if (page != null) {
-                val report = absorb(page.title, page.url, page.text)
-                learnedTopics.add(pick)
-                topic = page.title
-                chars = report.chars
-                newWords = report.newWords
+        var insight = 0f
+        var exploration: ReasoningEngine.Exploration? = null
+
+        val description = when (task) {
+            is AutonomousEngine.Task.Consolidate -> {
+                val con = synchronized(learningLock) {
+                    val report = consolidation.consolidate(recentConcepts.toList())
+                    pendingConsolidation = false
+                    report
+                }
+                autonomy.recordInsights(con.insights.size)
+                insight = con.score
+                val example = con.insights.firstOrNull()
+                if (example != null) {
+                    "consolidou: ${con.summary} (ex.: ${example.first} ↔ ${example.second})"
+                } else {
+                    "consolidou: ${con.summary}"
+                }
+            }
+            is AutonomousEngine.Task.ReadGap -> {
+                val page = if (allowNetwork) {
+                    runCatching { Web.wikipediaSummary(task.word) }.getOrNull()
+                } else null
+                if (page == null) {
+                    "tentou estudar “${task.word}” mas estava sem rede"
+                } else {
+                    val report = absorb(page.title, page.url, page.text)
+                    topic = page.title
+                    chars = report.chars
+                    newWords = report.newWords
+                    insight = report.reward
+                    "estudou “${page.title}”: ${report.newWords} palavras novas e " +
+                        "${report.anchors} ligações ao que já sabia"
+                }
+            }
+            is AutonomousEngine.Task.Bridge -> {
+                val ex = synchronized(learningLock) { reasoning.explore(rng) }
+                exploration = ex
+                insight = ex.insight
+                if (ex.bridge >= 0) {
+                    "aproximou “${semantics.name(ex.from)}” de “${semantics.name(ex.bridge)}”"
+                } else {
+                    "tentou aproximar “${semantics.name(ex.from)}” de “${semantics.name(ex.to)}”"
+                }
             }
         }
-        val desc = buildString {
-            if (topic.isNotBlank()) append("leu “$topic” no Wikipédia")
-            if (exploration.bridge >= 0) {
-                if (isNotEmpty()) append(" · ")
-                append("ligou “${semantics.name(exploration.from)}” a “${semantics.name(exploration.bridge)}” ")
-                append("(insight ${"%.2f".format(exploration.insight)})")
-            }
-            if (isEmpty()) append("reverberou o conectoma em repouso")
-        }
-        Autonomy(topic, chars, newWords, exploration.insight, desc, exploration)
+        Autonomy(topic, chars, newWords, insight, description, exploration, task.label)
     }
 
     // ------------------------------------------------------------------ stats
@@ -232,6 +287,11 @@ class Brain private constructor(val context: Context) {
         val dopamine: Float,
         val meanPlastic: Float,
         val learningEvents: Int,
+        val autonomyTasks: Int,
+        val autonomyReads: Int,
+        val autonomyBridges: Int,
+        val autonomyInsights: Int,
+        val lastTask: String,
     )
 
     fun stats(): Stats {
@@ -249,6 +309,11 @@ class Brain private constructor(val context: Context) {
             dopamine = dopamine.level,
             meanPlastic = (sum / connectome.edgeCount).toFloat(),
             learningEvents = totalLearningEvents,
+            autonomyTasks = autonomy.tasks,
+            autonomyReads = autonomy.reads,
+            autonomyBridges = autonomy.bridges,
+            autonomyInsights = autonomy.insights,
+            lastTask = autonomy.lastLabel,
         )
     }
 
@@ -267,6 +332,11 @@ class Brain private constructor(val context: Context) {
             .putLong("spikes", network.totalSpikes)
             .putInt("bursts", dopamine.totalBursts)
             .putString("topics", learnedTopics.joinToString("\u0001"))
+            .putInt("autoTasks", autonomy.tasks)
+            .putInt("autoReads", autonomy.reads)
+            .putInt("autoBridges", autonomy.bridges)
+            .putInt("autoConsolidations", autonomy.consolidations)
+            .putInt("autoInsights", autonomy.insights)
             .putString(
                 "status_line",
                 "${fmt(st.neurons)} neurônios · ${fmt(st.synapses)} sinapses · ${fmt(st.words)} palavras"
@@ -320,6 +390,13 @@ class Brain private constructor(val context: Context) {
         prefs.getString("topics", "")?.split("\u0001")?.filter { it.isNotBlank() }?.forEach { learnedTopics.add(it) }
         totalLearningEvents = prefs.getInt("events", 0)
         dopamine.restoreBursts(prefs.getInt("bursts", 0))
+        autonomy.restore(
+            tasks = prefs.getInt("autoTasks", 0),
+            reads = prefs.getInt("autoReads", 0),
+            bridges = prefs.getInt("autoBridges", 0),
+            consolidations = prefs.getInt("autoConsolidations", 0),
+            insights = prefs.getInt("autoInsights", 0),
+        )
         loadPlastic()
     }
 
