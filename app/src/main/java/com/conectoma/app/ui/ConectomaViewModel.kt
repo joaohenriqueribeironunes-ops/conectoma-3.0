@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.conectoma.app.core.Brain
+import com.conectoma.app.core.Numbers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,19 +56,20 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                 val autonomyOn = getApplication<Application>()
                     .getSharedPreferences("conectoma", Application.MODE_PRIVATE)
                     .getBoolean("autonomy", false)
+                // never let a formatting slip take the app down at boot
+                val greeting = runCatching {
+                    "Conectoma acordado.\n\n${brain.connectome.nodeCount} neurônios do cérebro da mosca, " +
+                        "${Numbers.grouped(brain.connectome.edgeCount)} sinapses, " +
+                        "${Numbers.grouped(brain.semantics.baseCount)} palavras no léxico.\n\n" +
+                        "Me fale de alguma coisa, cole um URL, ou me deixe aprender sozinho."
+                }.getOrElse { "Conectoma acordado." }
                 _state.update {
                     it.copy(
                         ready = true, progress = 1f, stage = "pronto",
                         autonomyEnabled = autonomyOn,
-                        stats = brain.stats(),
+                        stats = runCatching { brain.stats() }.getOrNull(),
                         messages = listOf(
-                            ChatMessage(
-                                ++seq, false,
-                                "Conectoma acordado.\n\n${brain.connectome.nodeCount} neurônios do cérebro da mosca, " +
-                                    "${formatEdge(brain.connectome.edgeCount)} sinapses, ${brain.semantics.baseCount} palavras no léxico.\n\n" +
-                                    "Me fale de alguma coisa, cole um URL, ou me deixe aprender sozinho.",
-                                "substrato carregado",
-                            )
+                            ChatMessage(++seq, false, greeting, "substrato carregado")
                         ),
                     )
                 }
@@ -221,7 +223,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        fun pct(v: Float) = "${(v * 100).toInt()}%"
-        fun formatEdge(e: Int) = String.format(java.util.Locale("pt", "BR"), "%,d".replace(',', '.'), e)
+        fun pct(v: Float) = Numbers.percent(v)
+        fun formatEdge(e: Int) = Numbers.grouped(e)
     }
 }

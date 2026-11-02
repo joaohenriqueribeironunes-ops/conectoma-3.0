@@ -1,4 +1,4 @@
-﻿package com.conectoma.app.ui
+package com.conectoma.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -771,6 +771,6 @@ fun DopamineDial(level: Float, modifier: Modifier = Modifier) {
 
 // ------------------------------------------------------------------ helpers
 
-fun nf(v: Int): String = String.format(java.util.Locale("pt", "BR"), "%,d", v).replace(',', '.')
-fun nf(v: Long): String = String.format(java.util.Locale("pt", "BR"), "%,d", v).replace(',', '.')
-fun pct(v: Float) = "${(v * 100).toInt()}%"
+fun nf(v: Int): String = com.conectoma.app.core.Numbers.grouped(v)
+fun nf(v: Long): String = com.conectoma.app.core.Numbers.grouped(v)
+fun pct(v: Float) = com.conectoma.app.core.Numbers.percent(v)
