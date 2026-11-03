@@ -86,7 +86,7 @@ class PdfTextTest {
         val path = System.getenv("CONECTOMA_PDF_TEST") ?: return
         val file = File(path)
         if (!file.exists()) return
-        val text = PdfText.extract(file.readBytes(), maxPages = 20)
+        val text = PdfText.extract(file.readBytes())
         println("PDF real: ${file.name} -> ${text.length} caracteres")
         println("amostra: " + text.take(400).replace("\n", " | "))
         assertTrue("extraiu pouco texto: ${text.length}", text.length > 5)

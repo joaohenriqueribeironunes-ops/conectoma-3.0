@@ -4,13 +4,14 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.conectoma.app.core.Brain
-import com.conectoma.app.core.Numbers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Mensagem do chat — apenas o texto final refinado.
@@ -49,53 +50,64 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     val brain: Brain = Brain.get(app)
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
-    private var seq = 0L
-    private var lastInteraction = System.currentTimeMillis()
-    private var lastSpontaneous = System.currentTimeMillis()
+
+    // ids e instantes compartilhados entre coroutines: só átomicos/voláteis
+    private val seq = AtomicLong(0L)
+    private val loading = AtomicBoolean(false)
+    private val tickerStarted = AtomicBoolean(false)
+
+    @Volatile private var lastInteraction = System.currentTimeMillis()
+    @Volatile private var lastSpontaneous = System.currentTimeMillis()
 
     init {
         load()
     }
 
+    /** single-flight: só um boot por vez, e nunca dois tickers concorrentes. */
     fun load() {
+        if (!loading.compareAndSet(false, true)) return
         // fora da thread principal: montar 3,75 M de sinapses não pode travar a UI
         viewModelScope.launch(Dispatchers.Default) {
-            _state.update { it.copy(ready = false, error = null, stage = "abrindo o conectoma") }
-            brain.initialize { stage, progress ->
-                _state.update { it.copy(stage = stage, progress = progress) }
-            }
-            if (brain.ready) {
-                val prefs = getApplication<Application>()
-                    .getSharedPreferences("conectoma", Application.MODE_PRIVATE)
-                val autonomyOn = prefs.getBoolean("autonomy", false)
-                val spontaneousOn = prefs.getBoolean("spontaneous", true)
-                // never let a formatting slip take the app down at boot
-                val greeting = runCatching {
-                    "Conectoma acordado.\n\n${brain.connectome.nodeCount} neurônios do cérebro da mosca, " +
-                        "${Numbers.grouped(brain.connectome.edgeCount)} sinapses, " +
-                        "${Numbers.grouped(brain.semantics.baseCount)} palavras no léxico.\n\n" +
-                        "Memória: ${brain.memory.size} materiais lidos e ${brain.memory.factCount} fatos guardados.\n\n" +
-                        "Me fale de alguma coisa, cole um URL, ou me deixe aprender sozinho."
-                }.getOrElse { "Conectoma acordado." }
-                _state.update {
-                    it.copy(
-                        ready = true, progress = 1f, stage = "pronto",
-                        autonomyEnabled = autonomyOn,
-                        spontaneousEnabled = spontaneousOn,
-                        stats = runCatching { brain.stats() }.getOrNull(),
-                        messages = listOf(
-                            ChatMessage(++seq, false, greeting)
-                        ),
-                    )
+            try {
+                _state.update { it.copy(ready = false, error = null, stage = "abrindo o conectoma") }
+                brain.initialize { stage, progress ->
+                    _state.update { it.copy(stage = stage, progress = progress) }
                 }
-                startTicker()
-            } else {
-                _state.update { it.copy(error = brain.loadError ?: "falha desconhecida") }
+                if (brain.ready) {
+                    val prefs = getApplication<Application>()
+                        .getSharedPreferences("conectoma", Application.MODE_PRIVATE)
+                    val autonomyOn = prefs.getBoolean("autonomy", false)
+                    val spontaneousOn = prefs.getBoolean("spontaneous", true)
+                    // never let a formatting slip take the app down at boot
+                    val greeting = runCatching {
+                        "Conectoma acordado.\n\n" +
+                            "Sou o seu assistente pessoal de estudos: leio, guardo e respondo " +
+                            "sobre qualquer coisa que você trouxer — texto, URL ou PDF.\n\n" +
+                            "Me fale de alguma coisa, cole um URL, ou me deixe aprender sozinho."
+                    }.getOrElse { "Conectoma acordado." }
+                    _state.update {
+                        it.copy(
+                            ready = true, progress = 1f, stage = "pronto",
+                            autonomyEnabled = autonomyOn,
+                            spontaneousEnabled = spontaneousOn,
+                            stats = runCatching { brain.stats() }.getOrNull(),
+                            messages = listOf(
+                                ChatMessage(seq.incrementAndGet(), false, greeting)
+                            ),
+                        )
+                    }
+                    startTicker()
+                } else {
+                    _state.update { it.copy(error = brain.loadError ?: "falha desconhecida") }
+                }
+            } finally {
+                loading.set(false)
             }
         }
     }
 
     private fun startTicker() {
+        if (!tickerStarted.compareAndSet(false, true)) return
         viewModelScope.launch(Dispatchers.Default) {
             while (true) {
                 delay(1200)
@@ -107,12 +119,12 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 delay(20_000)
                 if (!_state.value.autonomyEnabled) continue
-                val media = brain.autonomousStep(allowNetwork = true)
+                val media = runCatching { brain.autonomousStep(allowNetwork = true) }.getOrNull() ?: continue
                 _state.update {
                     it.copy(
                         autonomyLog = (listOf(media.description) + it.autonomyLog).take(24),
                         pulse = if (media.insight > 0.45f) it.pulse + 1 else it.pulse,
-                        stats = brain.stats(),
+                        stats = brain.stats() ?: it.stats,
                     )
                 }
             }
@@ -130,7 +142,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                 lastSpontaneous = now
                 _state.update {
                     it.copy(
-                        messages = it.messages + ChatMessage(++seq, false, said.text),
+                        messages = it.messages + ChatMessage(seq.incrementAndGet(), false, said.text),
                         autonomyLog = (listOf("falou sozinho sobre ${said.topic}") + it.autonomyLog).take(24),
                         stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                     )
@@ -142,7 +154,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     fun send(text: String) {
         if (text.isBlank() || _state.value.busy) return
         lastInteraction = System.currentTimeMillis()
-        val user = ChatMessage(++seq, true, text.trim())
+        val user = ChatMessage(seq.incrementAndGet(), true, text.trim())
         _state.update { it.copy(messages = it.messages + user , busy = true) }
         viewModelScope.launch(Dispatchers.Default) {
             val response = runCatching { brain.ask(text) }
@@ -151,7 +163,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                     busy = false,
                     // só o texto final refinado: sem disparos, cobertura, dopamina ou ms
                     messages = st.messages + ChatMessage(
-                        ++seq, false,
+                        seq.incrementAndGet(), false,
                         response.getOrNull()?.text ?: "Não consegui raciocinar agora: ${response.exceptionOrNull()?.message}",
                     ),
                     pulse = if ((response.getOrNull()?.dopamine ?: 0f) > 0.25f) st.pulse + 1 else st.pulse,
@@ -183,9 +195,9 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                     messages = if (report.error == null && firstFact != null) {
                         it.messages + ChatMessage(
-                            ++seq, false,
-                            "Li **${report.title}**. Guardei ${brain.memory.factCount} fatos no total — " +
-                                "um deles é este:\n\n“${firstFact.text.take(240)}”\n\n" +
+                            seq.incrementAndGet(), false,
+                            "Li **${report.title}**.\n\nUm trecho que guardei:\n\n" +
+                                "“${firstFact.text.take(240)}”\n\n" +
                                 "Agora posso responder usando o que li, não só o dicionário.",
                         )
                     } else it.messages,
@@ -239,12 +251,10 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                     pulse = if (report.reward > 0.5f) it.pulse + 1 else it.pulse,
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                     messages = it.messages + ChatMessage(
-                        ++seq, false,
-                        "Li **${doc.displayName}** (${doc.pageCount} páginas). " +
-                            "Extraí ${Numbers.grouped(doc.chars)} caracteres, aprendi ${report.newWords} palavras " +
-                            "e reforcei ${report.links} sinapses." +
-                            (firstFact?.let { f -> "\n\nGuardei na memória: “${f.text.take(240)}”" } ?: "") +
-                            "\n\nO que você quer saber sobre ele?",
+                        seq.incrementAndGet(), false,
+                        "Li **${doc.displayName}** por inteiro, palavra por palavra. " +
+                            (firstFact?.let { f -> "\n\nGuardei na memória: “${f.text.take(240)}”\n\n" } ?: "") +
+                            "O que você quer saber sobre ele?",
                     ),
                 )
             }
@@ -255,13 +265,17 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
         lastInteraction = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.Default) {
             _state.update { it.copy(busy = true) }
-            val media = brain.autonomousStep(allowNetwork = true)
+            val media = runCatching { brain.autonomousStep(allowNetwork = true) }.getOrNull()
+            if (media == null) {
+                _state.update { it.copy(busy = false) }
+                return@launch
+            }
             _state.update {
                 it.copy(
                     busy = false,
                     autonomyLog = (listOf(media.description) + it.autonomyLog).take(24),
                     messages = it.messages + ChatMessage(
-                        ++seq, false,
+                        seq.incrementAndGet(), false,
                         "Fui aprender sozinho: ${media.description}.",
                     ),
                     pulse = if (media.insight > 0.45f) it.pulse + 1 else it.pulse,
@@ -282,7 +296,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
             _state.update {
                 it.copy(
                     busy = false,
-                    messages = it.messages + ChatMessage(++seq, false, text),
+                    messages = it.messages + ChatMessage(seq.incrementAndGet(), false, text),
                     pulse = if ((media?.insight ?: 0f) > 0.45f) it.pulse + 1 else it.pulse,
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                 )
@@ -325,7 +339,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
             lastSpontaneous = System.currentTimeMillis()
             _state.update {
                 it.copy(
-                    messages = it.messages + ChatMessage(++seq, false, said.text),
+                    messages = it.messages + ChatMessage(seq.incrementAndGet(), false, said.text),
                     autonomyLog = (listOf("falou sozinho sobre ${said.topic}") + it.autonomyLog).take(24),
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                 )
@@ -341,13 +355,14 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun distance(a: String, b: String): Triple<String, String, Float>? {
-        val ia = brain.semantics.idOf(a)
-        val ib = brain.semantics.idOf(b)
+        val semantics = brain.semanticsOrNull ?: return null
+        val ia = semantics.idOf(a)
+        val ib = semantics.idOf(b)
         if (ia < 0 || ib < 0) return null
-        return Triple(brain.semantics.name(ia), brain.semantics.name(ib), brain.semantics.distance(ia, ib))
+        return Triple(semantics.name(ia), semantics.name(ib), semantics.distance(ia, ib))
     }
 
-    fun lookup(word: String): Int = brain.semantics.idOf(word)
+    fun lookup(word: String): Int = brain.semanticsOrNull?.idOf(word) ?: -1
 
     override fun onCleared() {
         runCatching { brain.save() }

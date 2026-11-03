@@ -14,8 +14,8 @@ android {
         applicationId = "com.conectoma.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "3.6"
+        versionCode = 14
+        versionName = "3.7"
         vectorDrawables { useSupportLibrary = true }
     }
 

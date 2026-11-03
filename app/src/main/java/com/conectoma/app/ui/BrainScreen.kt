@@ -55,7 +55,7 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
         Text("o que ele já sabe e o quanto mudou", style = Type.callout)
         Spacer(Modifier.height(18.dp))
 
-        GlassPanel(Modifier.fillMaxWidth(), glow = Ink.amber) {
+        GlassPanel(Modifier.fillMaxWidth(), glow = Ink.aqua) {
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 DopamineDial(stats?.dopamine ?: 0f, Modifier.size(92.dp))
                 Spacer(Modifier.width(18.dp))
@@ -92,7 +92,7 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Pill("${stats?.autonomyTasks ?: 0} tarefas", Ink.cyan)
                 Pill("${stats?.autonomyReads ?: 0} leituras", Ink.violet)
-                Pill("${stats?.autonomyBridges ?: 0} pontes", Ink.amber)
+                Pill("${stats?.autonomyBridges ?: 0} pontes", Ink.violet)
             }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -284,7 +284,7 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                 DistRow("significado", (1f - semantics.cosine(id, id2)) / 2f, Ink.aqua)
                 val graph = semantics.graphDistance(id, id2)
                 DistRow("caminho no conectoma", if (graph < 0f) 0f else graph, Ink.violet)
-                DistRow("forma da palavra", semantics.shapeDistance(id, id2), Ink.amber)
+                DistRow("forma da palavra", semantics.shapeDistance(id, id2), Ink.mist)
             } else {
                 Spacer(Modifier.height(10.dp))
                 Text("digite duas palavras que eu conheço", style = Type.callout.copy(color = Ink.dim))

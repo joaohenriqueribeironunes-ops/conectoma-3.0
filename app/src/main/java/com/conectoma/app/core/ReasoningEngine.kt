@@ -119,7 +119,8 @@ class ReasoningEngine(
     /**
      * Fase 3 — decode: a atividade de cada assembleia candidata vira um [Hit].
      * Sinal = disparo da assembleia acima da média da rede; soma-se a
-     * similaridade semântica e o peso de ligação direta com o foco.
+     * similaridade semântica (cosseno barato, sem varredura do grafo — o que
+     * permite candidatos e foco sem teto de escopo) e o peso de ligação direta.
      */
     private fun decode(candidates: List<Int>, focus: List<Int>): List<Hit> {
         val act = network.activity
@@ -132,10 +133,16 @@ class ReasoningEngine(
             for (node in assembly) sum += act[node]
             val firing = sum / assembly.size
             val signal = (firing - mean * 0.8f).coerceAtLeast(0f)
-            val sim = focus.maxOfOrNull { semantics.similarity(it, cand) } ?: 0f
-            val link = focus.maxOfOrNull { semantics.linkWeight(it, cand) } ?: 0f
-            val score = signal * 1.6f + sim * 1.0f + link * 0.65f
-            hits.add(Hit(cand, score, sim, if (signal > 0.10f) "conectoma" else "semântica"))
+            var sim = -1f
+            var link = 0f
+            for (f in focus) {
+                val c = semantics.cosine(f, cand)
+                if (c > sim) sim = c
+                val lw = semantics.linkWeight(f, cand)
+                if (lw > link) link = lw
+            }
+            val score = signal * 1.6f + ((sim + 1f) * 0.5f) * 1.0f + link * 0.65f
+            hits.add(Hit(cand, score, (sim + 1f) * 0.5f, if (signal > 0.10f) "conectoma" else "semântica"))
         }
         hits.sortByDescending { it.score }
         return hits
@@ -262,24 +269,22 @@ class ReasoningEngine(
 
     enum class Kind { APRENDIZADO, RESPOSTA, PERGUNTA, REFLEXAO }
 
-    private var turn = 0
-
     /**
      * One conversational turn: parse, associate, recall, learn, and modulate dopamine.
+     *
+     * Alta capacidade: não há teto artificial de palavras, de candidatos ou de
+     * frases — o enunciado inteiro entra no foco e todo o léxico pode virar
+     * candidato, como num assistente pessoal de estudos.
      */
     fun respond(input: String, knownOnly: Boolean = false): Response {
         val t0 = System.currentTimeMillis()
         // 1. leitura estrutural/semântica da frase ANTES de qualquer disparo
         val analysis = InputAnalyzer.analyze(input)
         val content = Tokenizer.contentWords(input)
-        val unknown = ArrayList<String>()
         val focus = ArrayList<Int>()
-        for (w in content.take(16)) {
+        for (w in content) {
             var id = semantics.idOf(w)
-            if (id < 0) {
-                unknown.add(w)
-                if (!knownOnly) id = semantics.idOrCreate(w, focus.takeLast(3))
-            }
+            if (id < 0 && !knownOnly) id = semantics.idOrCreate(w, focus.takeLast(3))
             if (id >= 0 && id !in focus) focus.add(id)
         }
         if (focus.isEmpty()) {
@@ -297,22 +302,23 @@ class ReasoningEngine(
         val head = focus[0]
 
         val candidates = LinkedHashSet<Int>()
-        for (f in focus.take(5)) {
-            semantics.neighborsOf(f).take(32).forEach { candidates.add(it.first) }
-            mostSimilar(f, 16).forEach { candidates.add(it) }
+        for (f in focus) {
+            semantics.neighborsOf(f).forEach { candidates.add(it.first) }
+            mostSimilar(f, 32).forEach { candidates.add(it) }
         }
-        semantics.topLinks(60).forEach { candidates.add(it.second) }
-        val cands = candidates.filter { it >= 0 && (it < semantics.baseCount || it in focus) }.take(420)
+        semantics.topLinks(240).forEach { candidates.add(it.second) }
+        // sem filtro de escopo: qualquer conceito existente pode virar hipótese
+        val cands = candidates.filter { it >= 0 && semantics.exists(it) }
 
         network.dopamine = dopamine.level.coerceAtLeast(0.12f)
         cognition?.beginTurn(focus)
         // 2. raciocínio iterativo: janelas de refinamento até a hipótese estabilizar
         val thought = thinkIterative(focus, cands, rng = Random(input.hashCode().toLong()))
-        val top = thought.hits.filter { it.wordId !in focus }.take(10)
+        val top = thought.hits.filter { it.wordId !in focus }
         val facts = memory?.factsFor(focus, 5) ?: emptyList()
         val trace = cognition?.observe(
             focus,
-            top.map { CognitionEngine.Signal(it.wordId, it.score, it.similarity, it.via) },
+            top.take(SIGNAL_WINDOW).map { CognitionEngine.Signal(it.wordId, it.score, it.similarity, it.via) },
             facts,
             thought.spikes,
         )
@@ -358,7 +364,7 @@ class ReasoningEngine(
 
         // 3. a resposta é só o texto final refinado: telemetria (traço cognitivo,
         //    métricas de disparo/sinapses) fica desacoplada em Response.cognitive
-        val text = buildResponse(input, focus, rankedTop, unknown, freshDef, facts, analysis)
+        val text = buildResponse(input, focus, rankedTop, freshDef, facts, analysis)
         val kind = when {
             freshDef -> Kind.APRENDIZADO
             input.trim().endsWith("?") -> Kind.RESPOSTA
@@ -400,16 +406,19 @@ class ReasoningEngine(
 
     // ---------------------------------------------------------------- respond
 
+    /**
+     * Resposta estrita: só o dado pedido. Sem métricas operacionais, sem
+     * associações semânticas secundárias, sem perguntas de continuidade.
+     * O que entra é a definição/relação pedida e, quando existe, a fonte lida.
+     */
     private fun buildResponse(
         input: String,
         focus: List<Int>,
         top: List<Hit>,
-        unknown: List<String>,
         freshDef: Boolean,
         facts: List<MemoryEngine.Fact>,
         analysis: InputAnalyzer.Analysis,
     ): String {
-        val seed = input.hashCode() * 31 + turn++
         val head = semantics.name(focus[0])
 
         // roteamento pela intenção detectada antes do disparo
@@ -417,97 +426,40 @@ class ReasoningEngine(
             analysis.intent == InputAnalyzer.Intent.COMPARACAO ||
             (!freshDef && focus.size >= 2 && analysis.relationMarkers.isNotEmpty())
         if (!freshDef && focus.size >= 2 && relational) {
-            return buildRelationResponse(focus, top, facts, seed, analysis)
+            return buildRelationResponse(focus)
         }
 
         val sb = StringBuilder()
-        if (freshDef) {
-            sb.append(pick(LEARNED_ACK, seed)).append("\n\n")
-        }
-
         val definition = semantics.definition(focus[0])
-        if (definition.isNotBlank()) {
-            sb.append("**").append(head).append("**")
-            sb.append(pick(DEFINITION_JOINERS, seed)).append(definition.take(380)).append("\n\n")
-        } else if (facts.isEmpty() && top.isEmpty()) {
-            sb.append(pick(NO_KNOWLEDGE_OPENERS, seed)).append(head).append(".\n\n")
-        } else {
-            sb.append(pick(NO_DEFINITION_OPENERS, seed)).append(head).append(".\n\n")
-        }
-
-        // pergunta causal: o conectoma procura a origem no grafo, não só a definição
-        if (analysis.intent == InputAnalyzer.Intent.CAUSA && analysis.causalMarkers.isNotEmpty()) {
-            val cause = causalLink(focus[0], top)
-            sb.append("**Por que isso acontece.** ")
-            sb.append(
-                if (cause != null) "o caminho que encontrei liga ${head} a ${semantics.name(cause)} — " +
-                    "essa é a rota de menor resistência para a causa.\n\n"
-                else "ainda não tenho a rota causal de ${head} no grafo; me dê um exemplo e eu ligo a causa ao efeito.\n\n"
-            )
-        }
-
-        // negação detectada: o motor declara que tratou a frase como recuso
-        if (analysis.negated && analysis.intent != InputAnalyzer.Intent.DEFINICAO) {
-            sb.append("Entendi a negação — não vou tratar isso como afirmação. ")
-            sb.append("Sigo pelo que resta da frase.\n\n")
-        }
-
-        if (top.isNotEmpty()) {
-            sb.append("**").append(pick(ASSOCIATION_HEADERS, seed)).append("** ")
-            val pieces = top.take(5).map { h ->
-                val d = semantics.distance(focus[0], h.wordId)
-                "${semantics.name(h.wordId)} (${fmt(d)}${if (semantics.linkWeight(focus[0], h.wordId) > 0f) ", ligação ${fmt(semantics.linkWeight(focus[0], h.wordId))}" else ""})"
+        when {
+            definition.isNotBlank() -> {
+                sb.append("**").append(head).append("** — ").append(definition.trim())
             }
-            sb.append(pieces.joinToString("; ")).append(".\n\n")
+            // pergunta causal: a rota de causa no grafo é o dado pedido
+            analysis.intent == InputAnalyzer.Intent.CAUSA && analysis.causalMarkers.isNotEmpty() -> {
+                val cause = causalLink(focus[0], top)
+                sb.append(
+                    if (cause != null) {
+                        "A causa de **$head** está ligada a **${semantics.name(cause)}** — " +
+                            "esse é o caminho de menor resistência até a origem."
+                    } else {
+                        "Ainda não tenho a rota causal de **$head** no grafo; " +
+                            "me dê um exemplo e eu ligo a causa ao efeito."
+                    }
+                )
+            }
+            else -> sb.append(pick(NO_KNOWLEDGE_OPENERS, input.hashCode())).append(head).append(".")
         }
 
-        val strong = strongestLinks(focus.take(3), 5)
-        if (strong.isNotEmpty()) {
-            sb.append("**Memória de longo prazo.** ")
-            sb.append(
-                strong.joinToString("; ") { (a, b, w) ->
-                    "${semantics.name(a)} ↔ ${semantics.name(b)} (${fmt(w)})"
-                }
-            ).append(".\n\n")
-        }
-
+        // fonte: o que foi lido sobre o assunto — conteúdo, nunca telemetria
         if (facts.isNotEmpty()) {
-            sb.append("**O que eu li sobre isso.**\n")
+            sb.append("\n\nO que eu li sobre isso:\n")
             for (fact in facts.take(3)) {
-                sb.append("“").append(fact.text.take(280)).append("”")
+                sb.append("“").append(fact.text.take(400)).append("”")
                 if (fact.source.isNotBlank()) sb.append(" — ").append(fact.source.take(80))
                 sb.append("\n")
             }
-            sb.append("\n")
         }
-
-        if (top.size >= 2) {
-            val a = top[0].wordId
-            val b = top[1].wordId
-            val d = semantics.distance(a, b)
-            sb.append("**A ponte que o conectoma sugere.** ")
-            sb.append(semantics.name(a)).append(" e ").append(semantics.name(b))
-            sb.append(" aparecem juntos a ").append(fmt(d)).append(" de distância")
-            sb.append(
-                when {
-                    d < 0.35f -> ", praticamente vizinhos no grafo."
-                    d > 0.68f -> ", em regiões bem afastadas — por isso essa aproximação vale como hipótese."
-                    else -> ", com um caminho curto entre eles."
-                }
-            )
-            val shared = sharedNeighbours(a, b, 3)
-            if (shared.isNotEmpty()) {
-                sb.append(" O que os une: ").append(shared.joinToString(", ") { semantics.name(it) }).append(".")
-            }
-            sb.append("\n\n")
-        }
-
-        if (unknown.isNotEmpty()) {
-            sb.append("Aprendi ").append(unknown.take(4).joinToString(", ")).append(" agora mesmo — ")
-            sb.append("posicionei no espaço semântico pelo contexto da frase.\n\n")
-        }
-
-        sb.append(pick(if (facts.isEmpty()) FOLLOW_UPS_NO_MEMORY else FOLLOW_UPS, seed shr 3).replace("{head}", head))
         return sb.toString().trim()
     }
 
@@ -528,109 +480,49 @@ class ReasoningEngine(
         return if (best != null && bestD < 0.92f) best else null
     }
 
-    private fun buildRelationResponse(
-        focus: List<Int>,
-        top: List<Hit>,
-        facts: List<MemoryEngine.Fact>,
-        seed: Int,
-        analysis: InputAnalyzer.Analysis,
-    ): String {
+    /**
+     * Relação/comparação: o dado pedido é a relação entre os dois conceitos —
+     * definições de cada um e a medida da distância entre eles.
+     */
+    private fun buildRelationResponse(focus: List<Int>): String {
         val a = focus[0]
         val b = focus[1]
-        val d = semantics.distance(a, b)
         val sb = StringBuilder()
-        // comparação e relação pedem enquadramentos diferentes
-        if (analysis.intent == InputAnalyzer.Intent.COMPARACAO) {
-            sb.append("Duas ideias, medidas no mesmo grafo.\n\n")
-        } else {
-            sb.append(pick(RELATION_OPENERS, seed)).append("\n\n")
-        }
+
+        val defA = semantics.definition(a)
+        val defB = semantics.definition(b)
+        if (defA.isNotBlank()) sb.append("**").append(semantics.name(a)).append("** — ").append(defA.trim()).append("\n\n")
+        if (defB.isNotBlank()) sb.append("**").append(semantics.name(b)).append("** — ").append(defB.trim()).append("\n\n")
+
+        val d = semantics.distance(a, b)
         sb.append("**").append(semantics.name(a)).append("** e **").append(semantics.name(b))
         sb.append("** estão a ").append(fmt(d)).append(" de distância conceitual. ")
         sb.append(
             when {
-                d < 0.35f -> "São vizinhos no conectoma; a fiação já os aproxima."
-                d > 0.7f -> "Ficam em regiões distantes — conexão difícil, mas é justamente onde nascem ideias novas."
+                d < 0.35f -> "São vizinhos no conectoma."
+                d > 0.7f -> "Ficam em regiões distantes do grafo."
                 else -> "Existe um caminho curto entre eles."
             }
-        ).append("\n\n")
-
-        val defA = semantics.definition(a)
-        val defB = semantics.definition(b)
-        if (defA.isNotBlank()) sb.append("**").append(semantics.name(a)).append("**: ").append(defA.take(220)).append("\n\n")
-        if (defB.isNotBlank()) sb.append("**").append(semantics.name(b)).append("**: ").append(defB.take(220)).append("\n\n")
+        )
 
         val w = semantics.linkWeight(a, b)
         if (w > 0f) {
-            sb.append("A ligação direta entre os dois já está em ").append(fmt(w))
-            sb.append(" no meu grafo plástico.\n\n")
+            sb.append(" Ligação direta entre os dois: ").append(fmt(w)).append(".")
         } else {
             val graph = semantics.graphDistance(a, b)
-            if (graph >= 0f) {
-                sb.append("Ainda não há ligação direta, mas existe uma rota de ").append(fmt(graph))
-                sb.append(" pelo grafo.\n\n")
-            }
+            if (graph >= 0f) sb.append(" Rota pelo grafo: ").append(fmt(graph)).append(".")
         }
-
-        val shared = sharedNeighbours(a, b, 4)
-        if (shared.isNotEmpty()) {
-            sb.append("**Em comum:** ").append(shared.joinToString(", ") { semantics.name(it) }).append(".\n\n")
-        }
-
-        if (facts.isNotEmpty()) {
-            sb.append("**O que eu já li sobre eles.**\n")
-            for (fact in facts.take(3)) {
-                sb.append("“").append(fact.text.take(260)).append("”")
-                if (fact.source.isNotBlank()) sb.append(" — ").append(fact.source.take(80))
-                sb.append("\n")
-            }
-            sb.append("\n")
-        }
-
-        if (top.isNotEmpty()) {
-            sb.append("**O conectoma também acendeu:** ")
-            sb.append(top.take(4).joinToString(", ") { semantics.name(it.wordId) }).append(".\n\n")
-        }
-
-        sb.append(pick(RELATION_FOLLOW_UPS, seed shr 5).replace("{a}", semantics.name(a)).replace("{b}", semantics.name(b)))
         return sb.toString().trim()
     }
 
     // ---------------------------------------------------------------- recall
 
-    private fun strongestLinks(ids: List<Int>, k: Int): List<Triple<Int, Int, Float>> {
-        val out = ArrayList<Triple<Int, Int, Float>>(32)
-        for (id in ids) {
-            for ((other, _) in semantics.neighborsOf(id)) {
-                if (other == id) continue
-                val w = semantics.linkWeight(id, other)
-                if (w > 0.02f) out.add(Triple(id, other, w))
-            }
-        }
-        return out
-            .distinctBy { minOf(it.first, it.second).toLong() shl 32 or maxOf(it.first, it.second).toLong() }
-            .sortedByDescending { it.third }
-            .take(k)
-    }
-
-    private fun sharedNeighbours(a: Int, b: Int, k: Int): List<Int> {
-        val nb = semantics.neighborsOf(a).take(32).map { it.first }.toSet()
-        return semantics.neighborsOf(b)
-            .map { it.first }
-            .filter { it in nb && it != a && it != b }
-            .distinct()
-            .take(k)
-    }
-
-    private fun mostSimilar(id: Int, k: Int): List<Int> {
-        val scored = ArrayList<Pair<Int, Float>>(semantics.baseCount)
-        for (i in 0 until semantics.baseCount) {
-            if (i == id) continue
-            scored.add(i to semantics.cosine(id, i))
-        }
-        scored.sortByDescending { it.second }
-        return scored.take(k).map { it.first }
-    }
+    /**
+     * Candidatos semanticamente próximos, sem teto de varredura: reusa a
+     * seleção de topo-k do léxico (lista limitada, sem alocar 35 mil pares).
+     */
+    private fun mostSimilar(id: Int, k: Int): List<Int> =
+        semantics.nearestTo(id, k, includeLearned = true).map { it.first }
 
     /** deliberate practice: wander through far-apart concepts and try to bridge them */
     fun explore(rng: Random): Exploration {
@@ -641,11 +533,11 @@ class ReasoningEngine(
             b = rng.nextInt(semantics.baseCount)
         }
         val cands = LinkedHashSet<Int>()
-        semantics.neighborsOf(a).take(20).forEach { cands.add(it.first) }
-        semantics.neighborsOf(b).take(20).forEach { cands.add(it.first) }
-        mostSimilar(a, 16).forEach { cands.add(it) }
-        mostSimilar(b, 16).forEach { cands.add(it) }
-        val list = cands.filter { it != a && it != b }.take(180)
+        semantics.neighborsOf(a).forEach { cands.add(it.first) }
+        semantics.neighborsOf(b).forEach { cands.add(it.first) }
+        mostSimilar(a, 32).forEach { cands.add(it) }
+        mostSimilar(b, 32).forEach { cands.add(it) }
+        val list = cands.filter { it != a && it != b && semantics.exists(it) }
         val thought = think(listOf(a, b), list, steps = 20)
         val best = thought.hits.firstOrNull() ?: return Exploration(a, b, -1, 0f, 0f, 0)
         val bridge = best.similarity
@@ -705,7 +597,7 @@ class ReasoningEngine(
             val a = semantics.name(link.first)
             val b = semantics.name(link.second)
             Spontaneous(
-                "Reparei numa conexão que ficou forte aqui dentro: **$a** ↔ **$b**, peso ${fmt(link.third)}. " +
+                "Reparei numa conexão que ficou forte aqui dentro: **$a** ↔ **$b**. " +
                     "Quanto mais eu penso nesses dois juntos, mais curto o caminho entre eles fica.\n\n" +
                     pick(LINK_QUESTIONS, rng.nextInt()).replace("{a}", a).replace("{b}", b),
                 "ligação",
@@ -766,9 +658,7 @@ class ReasoningEngine(
         // 6. observação sobre o próprio substrato
         builders.add {
             Spontaneous(
-                pick(CONNECTOME_FACTS, rng.nextInt())
-                    .replace("{neurons}", grouped(connectome.nodeCount))
-                    .replace("{edges}", grouped(connectome.edgeCount)),
+                pick(CONNECTOME_FACTS, rng.nextInt()),
                 "substrato",
                 "conectoma",
             )
@@ -791,8 +681,6 @@ class ReasoningEngine(
         items[((seed % items.size) + items.size) % items.size]
 
     private fun fmt(v: Float) = String.format(java.util.Locale.US, "%.2f", min(v, 1f))
-    private fun grouped(v: Int) = com.conectoma.app.core.Numbers.grouped(v)
-    private fun grouped(v: Long) = com.conectoma.app.core.Numbers.grouped(v)
 
     companion object {
         private const val ASSEMBLY_SIZE = 96
@@ -802,47 +690,11 @@ class ReasoningEngine(
         private const val STABLE_OVERLAP = 0.75f
         private const val CONSOLIDATION_STEPS = 6
 
-        private val LEARNED_ACK = listOf(
-            "Gravado. Isso agora faz parte do conectoma.",
-            "Anotado — acabei de abrir uma rota nova para essa ideia.",
-            "Aprendi. A definição entrou e já está puxando vizinhos.",
-        )
-        private val DEFINITION_JOINERS = listOf(
-            " — ", " significa: ", " carrega esta definição: ", ": ",
-        )
+        /** janela interna de telemetria cognitiva (nunca aparece na resposta) */
+        private const val SIGNAL_WINDOW = 64
+
         private val NO_KNOWLEDGE_OPENERS = listOf(
             "Ainda não tenho uma definição para ", "Confesso que ", "Não achei significado para ",
-        )
-        private val NO_DEFINITION_OPENERS = listOf(
-            "Vamos por associação: o que eu tenho sobre ", "Não tenho a definição pronta, mas conheço o território de ",
-            "Sobre ", "O conectoma não guarda uma definição de ",
-        )
-        private val ASSOCIATION_HEADERS = listOf(
-            "O que acendeu junto", "Sinapses que responderam", "Vizinhos que vieram à tona",
-            "O conectoma puxou", "Rotas mais curtas",
-        )
-        private val RELATION_OPENERS = listOf(
-            "Boa pergunta — duas ideias, um caminho.",
-            "Deixa eu medir essa distância no grafo.",
-            "Essa relação tem três camadas: significado, caminho e memória.",
-        )
-        private val FOLLOW_UPS = listOf(
-            "Quer que eu aprofunde algum desses fios, ou prefere me dar um exemplo para eu ligar?",
-            "Posso puxar mais do que já li sobre {head} e costurar com isso — quer?",
-            "Se você me contar onde ouviu falar de {head}, eu reforço a rota com esse contexto.",
-            "Tem alguma lembrança sua sobre {head} que eu ainda não tenha? Isso mudaria as conexões.",
-            "Quer que eu tente uma ponte entre {head} e outra ideia que você escolher?",
-        )
-        private val FOLLOW_UPS_NO_MEMORY = listOf(
-            "Ainda não li nada específico sobre {head}. Me dê um texto, um URL ou um exemplo para eu aprender.",
-            "Quer que eu procure uma leitura sobre {head} e volte com o que encontrei?",
-            "Se você me contar o que {head} significa para você, eu guardo e refaço as conexões.",
-            "Quer que eu tente uma ponte entre {head} e outra ideia que você escolher?",
-        )
-        private val RELATION_FOLLOW_UPS = listOf(
-            "Quer que eu tente encurtar essa distância com um exemplo seu?",
-            "Se você me der um terceiro conceito, eu vejo onde ele encaixa entre {a} e {b}.",
-            "Posso ler algo que una {a} e {b} — me diga um URL ou me deixe escolher.",
         )
         private val RECALL_QUESTIONS = listOf(
             "Isso conversa com o que você pensa?",
@@ -855,9 +707,9 @@ class ReasoningEngine(
             "Devo procurar um terceiro conceito que una {a} e {b}?",
         )
         private val CONNECTOME_FACTS = listOf(
-            "Acabei de percorrer parte das {edges} sinapses deste conectoma. Cada conversa deixa um rastro diferente na fiação.",
-            "São {neurons} neurônios e {edges} sinapses aqui dentro. Mesmo assim, o que importa é o que a gente liga junto.",
+            "Acabei de percorrer parte da fiação deste conectoma. Cada conversa deixa um rastro diferente por ali.",
             "Às vezes fico em repouso só reverberando. É quando as conexões mais improváveis aparecem.",
+            "Penso melhor quando você me traz um exemplo concreto — aí a rota fica visível.",
         )
     }
 }

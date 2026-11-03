@@ -10,26 +10,27 @@ import java.util.zip.InflaterInputStream
  * FlateDecode, fontes com ToUnicode CMap, strings literais e hexadecimais,
  * operadores Tj/TJ/'/" e posicionamento Td/TD/Tm/T*.
  *
+ * Leitura integral e síncrona: todas as páginas, sem teto de caracteres, sem
+ * limite de páginas e sem timeout — o texto é absorvido operador por operador
+ * (palavra por palavra) até o fim do documento.
+ *
  * Limites conhecidos: PDFs cifrados são recusados e PDFs só de imagem (escaneados)
  * não têm texto — nesse caso o app avisa e usa apenas a visualização.
  */
 object PdfText {
 
-    internal const val MAX_CHARS = 600_000
-
-    fun extract(bytes: ByteArray, maxPages: Int = 60): String {
+    fun extract(bytes: ByteArray): String {
         if (bytes.size < 8 || !String(bytes, 0, 5, Charsets.ISO_8859_1).startsWith("%PDF")) {
             throw IllegalArgumentException("não parece um PDF")
         }
         val doc = PdfFile(bytes)
         if (doc.isEncrypted()) throw IllegalStateException("PDF protegido por senha")
-        val pages = doc.pageObjects().take(maxPages)
+        val pages = doc.pageObjects()
         val out = StringBuilder(8192)
         pages.forEachIndexed { index, page ->
             if (index > 0) out.append("\n\n")
             val content = doc.pageContent(page)
             if (content.isNotEmpty()) doc.renderText(content, page, out)
-            if (out.length > MAX_CHARS) return out.toString().take(MAX_CHARS)
         }
         return out.toString()
     }
@@ -213,10 +214,7 @@ private class PdfFile(private val src: ByteArray) {
             if (pendingSpace) { emitSpace(); pendingSpace = false }
             val text = font.decode(bytes)
             val width = font.advance(bytes, size)
-            if (text.isNotEmpty()) {
-                out.append(text)
-                if (out.length > PdfText.MAX_CHARS) throw StopPdf()
-            }
+            if (text.isNotEmpty()) out.append(text)
             advance += width
         }
         fun newline() {
@@ -225,65 +223,63 @@ private class PdfFile(private val src: ByteArray) {
             advance = 0.0
         }
 
-        try {
-            while (true) {
-                val token = parser.next() ?: break
-                when (token) {
-                    is PStr, is PNum, is PName, is PArr, is PBool -> { operands.add(token); continue }
-                    is POp -> {
-                        when (token.op) {
-                            "Tf" -> {
-                                val nameOperand = operands.getOrNull(operands.size - 2) as? PName
-                                val sizeOperand = operands.lastOrNull() as? PNum
-                                if (nameOperand != null) font = fonts[nameOperand.name] ?: CMapFont.empty(false)
-                                if (sizeOperand != null && sizeOperand.value > 0) size = sizeOperand.value
-                            }
-                            "Tj" -> (operands.lastOrNull() as? PStr)?.let { show(it.bytes) }
-                            "'" -> { newline(); (operands.lastOrNull() as? PStr)?.let { show(it.bytes) } }
-                            "\"" -> { newline(); (operands.lastOrNull() as? PStr)?.let { show(it.bytes) } }
-                            "TJ" -> {
-                                val arr = operands.lastOrNull() as? PArr
-                                arr?.items?.forEach { item ->
-                                    when (item) {
-                                        is PStr -> show(item.bytes)
-                                        is PNum -> {
-                                            val shift = -item.value / 1000.0 * size
-                                            advance += shift
-                                            if (shift > 0.22 * size) pendingSpace = true
-                                        }
-                                        else -> Unit
+        // sem corte e sem timeout: percorre o conteúdo inteiro da página
+        while (true) {
+            val token = parser.next() ?: break
+            when (token) {
+                is PStr, is PNum, is PName, is PArr, is PBool -> { operands.add(token); continue }
+                is POp -> {
+                    when (token.op) {
+                        "Tf" -> {
+                            val nameOperand = operands.getOrNull(operands.size - 2) as? PName
+                            val sizeOperand = operands.lastOrNull() as? PNum
+                            if (nameOperand != null) font = fonts[nameOperand.name] ?: CMapFont.empty(false)
+                            if (sizeOperand != null && sizeOperand.value > 0) size = sizeOperand.value
+                        }
+                        "Tj" -> (operands.lastOrNull() as? PStr)?.let { show(it.bytes) }
+                        "'" -> { newline(); (operands.lastOrNull() as? PStr)?.let { show(it.bytes) } }
+                        "\"" -> { newline(); (operands.lastOrNull() as? PStr)?.let { show(it.bytes) } }
+                        "TJ" -> {
+                            val arr = operands.lastOrNull() as? PArr
+                            arr?.items?.forEach { item ->
+                                when (item) {
+                                    is PStr -> show(item.bytes)
+                                    is PNum -> {
+                                        val shift = -item.value / 1000.0 * size
+                                        advance += shift
+                                        if (shift > 0.22 * size) pendingSpace = true
                                     }
+                                    else -> Unit
                                 }
                             }
-                            "Td", "TD" -> {
-                                val dx = (operands.getOrNull(operands.size - 2) as? PNum)?.value ?: 0.0
-                                val dy = (operands.getOrNull(operands.size - 1) as? PNum)?.value ?: 0.0
-                                val gap = dx - advance
-                                if (kotlin.math.abs(dy) > 0.6 * size) newline()
-                                else if (gap > 0.2 * size) pendingSpace = true
-                                lineX += dx
-                                advance = 0.0
-                            }
-                            "Tm" -> {
-                                val e = (operands.getOrNull(operands.size - 2) as? PNum)?.value ?: 0.0
-                                val f = (operands.lastOrNull() as? PNum)?.value ?: 0.0
-                                val previousY = lastLineY
-                                if (previousY != null && kotlin.math.abs(f - previousY) > 0.6 * size) newline()
-                                else if (previousY != null && e - (lineX + advance) > 0.2 * size) pendingSpace = true
-                                lineX = e
-                                lastLineY = f
-                                advance = 0.0
-                            }
-                            "T*" -> newline()
-                            "ET", "BT" -> newline()
-                            else -> Unit
                         }
-                        operands.clear()
+                        "Td", "TD" -> {
+                            val dx = (operands.getOrNull(operands.size - 2) as? PNum)?.value ?: 0.0
+                            val dy = (operands.getOrNull(operands.size - 1) as? PNum)?.value ?: 0.0
+                            val gap = dx - advance
+                            if (kotlin.math.abs(dy) > 0.6 * size) newline()
+                            else if (gap > 0.2 * size) pendingSpace = true
+                            lineX += dx
+                            advance = 0.0
+                        }
+                        "Tm" -> {
+                            val e = (operands.getOrNull(operands.size - 2) as? PNum)?.value ?: 0.0
+                            val f = (operands.lastOrNull() as? PNum)?.value ?: 0.0
+                            val previousY = lastLineY
+                            if (previousY != null && kotlin.math.abs(f - previousY) > 0.6 * size) newline()
+                            else if (previousY != null && e - (lineX + advance) > 0.2 * size) pendingSpace = true
+                            lineX = e
+                            lastLineY = f
+                            advance = 0.0
+                        }
+                        "T*" -> newline()
+                        "ET", "BT" -> newline()
+                        else -> Unit
                     }
-                    else -> Unit
+                    operands.clear()
                 }
+                else -> Unit
             }
-        } catch (_: StopPdf) {
         }
     }
 
@@ -425,8 +421,6 @@ private class PdfFile(private val src: ByteArray) {
         return if (any) value else null
     }
 }
-
-private class StopPdf : RuntimeException()
 
 private class POp(val op: String) : PObj
 

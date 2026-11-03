@@ -33,19 +33,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/**
+ * Paleta principal: Verde Grafite (base esverdeada de grafite) + Aurora
+ * (acentos verde-teal em degradê). [amber] e [rose] são reservados
+ * exclusivamente para sinalização e alertas.
+ */
 object Ink {
-    val void = Color(0xFF06070F)
-    val deep = Color(0xFF0B0D1A)
-    val indigo = Color(0xFF5B5FEF)
-    val indigoDeep = Color(0xFF34389E)
-    val violet = Color(0xFF8B7BFF)
+    // ---- Verde Grafite: fundo e superfícies
+    val void = Color(0xFF050A08)
+    val deep = Color(0xFF0A1210)
+    // ---- Aurora: acentos de trabalho (nunca amarelo)
+    val indigo = Color(0xFF2FBF8F)
+    val indigoDeep = Color(0xFF177A5A)
+    val violet = Color(0xFF6FE0C2)
     val cyan = Color(0xFF5FE3D6)
     val aqua = Color(0xFF3FC8C0)
+    // ---- sinalização e alertas
     val amber = Color(0xFFF5C24B)
     val rose = Color(0xFFFF7A9A)
-    val paper = Color(0xFFF2F4FF)
-    val mist = Color(0xFFA8B0D8)
-    val dim = Color(0xFF6E76A0)
+    // ---- texto e vidro
+    val paper = Color(0xFFF0F7F3)
+    val mist = Color(0xFFA3B8AE)
+    val dim = Color(0xFF6F857B)
     val glassTop = Color(0x1FFFFFFF)
     val glassBottom = Color(0x0AFFFFFF)
     val stroke = Color(0x26FFFFFF)
@@ -162,7 +171,7 @@ fun AuroraBackdrop(modifier: Modifier = Modifier) {
         label = "phase",
     )
     Canvas(modifier.fillMaxSize()) {
-        drawRect(Brush.verticalGradient(listOf(Ink.void, Ink.deep, Color(0xFF080A16))))
+        drawRect(Brush.verticalGradient(listOf(Ink.void, Ink.deep, Color(0xFF07100D))))
         val w = size.width
         val h = size.height
         fun blob(cx: Float, cy: Float, r: Float, color: Color, alpha: Float) {

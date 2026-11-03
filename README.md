@@ -24,21 +24,26 @@ Não é preciso instalar SDK, Java ou nada no PC. O APK é auto-contido.
 **Assistente** — o conectoma em 2.5D: quatro camadas planas sobrepostas com
 paralaxe (sensorial atrás, complexo central, corpo cogumelo e motor na frente),
 cada ponto um neurônio real e cada fio uma sinapse real. A visão é estática —
-sem rotação, sem giro 3D — para não consumir GPU nem bateria. Escreva embaixo.
+sem rotação, sem giro 3D — para não consumir GPU nem bateria. A barra de
+mensagens é contínua: campo de texto e envio no mesmo vidro, sem corte central.
+Paleta **Verde Grafite + Aurora** (amarelo só para sinalização/alertas).
 
-- `o que é sinapse?` → definição + conceitos ligados + o que ele já leu sobre o tema
-- `como a música se liga à matemática?` → distância conceitual, vizinhos comuns e lembranças
+- `o que é sinapse?` → só a definição + o que ele já leu sobre o tema
+- `como a música se liga à matemática?` → definições dos dois e a distância conceitual
 - `amor é o que move o mundo` → ele grava a definição e reforça as conexões
 - **silêncio** → depois de ~30 s sem pergunta, ele puxa assunto sozinho: uma leitura
   antiga, uma ligação forte, uma lacuna de conhecimento ou uma pergunta própria
 
-Cada resposta percorre **94–98% das 3,75 milhões de sinapses** e avalia todas elas
-na varredura de plasticidade. A saída do balão é **só o texto final refinado** —
-disparos, cobertura, dopamina e tempos ficam na tela Cérebro, nunca na conversa.
+A saída do balão é **só o dado pedido**: sem métricas de disparo/sinapses, sem
+associações secundárias, sem perguntas de continuidade. Métricas ficam só na
+tela Cérebro. Sem escopo artificial — assistente pessoal de estudos de alta
+capacidade, com resposta iterativa até a hipótese estabilizar.
 
 **Aprender** — cole um URL (Wikipédia funciona muito bem) **ou escolha um PDF**.
 Ele lê a página/arquivo, extrai conceitos, cria ligações e aprende palavras novas.
-No caso do PDF, as primeiras páginas são renderizadas na tela para você ver o que
+O PDF é lido **por inteiro, palavra por palavra, sem limite de páginas, sem teto
+de caracteres e sem timeout** — leitura síncrona/assíncrona profunda até o fim do
+documento; as primeiras páginas são renderizadas na tela para você ver o que
 ele está lendo. O interruptor de **aprendizado autônomo** faz ele buscar temas
 sozinho e continuar mesmo com o app fechado (serviço em primeiro plano).
 

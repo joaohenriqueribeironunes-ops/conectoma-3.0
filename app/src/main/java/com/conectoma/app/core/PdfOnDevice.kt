@@ -10,8 +10,9 @@ import android.provider.OpenableColumns
 import java.io.File
 
 /**
- * Lê um PDF escolhido pelo usuário no seletor do sistema: extrai o texto para o
- * conectoma aprender e renderiza as primeiras páginas para visualização.
+ * Lê um PDF escolhido pelo usuário no seletor do sistema: extrai o texto
+ * integral (palavra por palavra, sem timeout) para o conectoma aprender e
+ * renderiza as primeiras páginas para visualização.
  */
 object PdfOnDevice {
 
@@ -24,7 +25,7 @@ object PdfOnDevice {
         val note: String? = null,
     )
 
-    fun read(context: Context, uri: Uri, previewPages: Int = 3, maxPages: Int = 40): Document {
+    fun read(context: Context, uri: Uri, previewPages: Int = 3): Document {
         val name = displayName(context, uri)
         val dir = File(context.cacheDir, "pdf").apply { mkdirs() }
         val file = File(dir, "entrada.pdf")
@@ -75,13 +76,11 @@ object PdfOnDevice {
         var text = ""
         var note: String? = null
         try {
-            if (file.length() > 48L * 1024 * 1024) {
-                note = "PDF muito grande (${file.length() / (1024 * 1024)} MB) — usei só as primeiras páginas visuais"
-            } else {
-                text = PdfText.extract(file.readBytes(), maxPages = maxPages)
-                if (text.length < 80) {
-                    note = "esse PDF quase não tem texto (talvez seja digitalizado); usei só as imagens"
-                }
+            // leitura integral e síncrona: todas as páginas, palavra por palavra,
+            // sem limite de tamanho, sem teto de páginas e sem timeout
+            text = PdfText.extract(file.readBytes())
+            if (text.length < 80) {
+                note = "esse PDF quase não tem texto (talvez seja digitalizado); usei só as imagens"
             }
         } catch (t: Throwable) {
             note = when (t) {

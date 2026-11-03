@@ -129,6 +129,46 @@ fun InputField(
     }
 }
 
+/**
+ * Barra de mensagens contínua: campo de texto e envio vivem dentro do mesmo
+ * vidro, sem corte nem divisão central.
+ */
+@Composable
+fun MessageBar(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(26.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Brush.horizontalGradient(listOf(Color(0x1AFFFFFF), Color(0x10FFFFFF))))
+            .border(0.9.dp, Ink.stroke, shape)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(placeholder, style = Type.body.copy(color = Ink.dim), maxLines = 1)
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                textStyle = Type.body,
+                cursorBrush = Brush.verticalGradient(listOf(Ink.cyan, Ink.cyan)),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        SendButton(enabled = enabled, onClick = onSend)
+    }
+}
+
 @Composable
 fun Toggle(on: Boolean, onChange: (Boolean) -> Unit) {
     val offset by animateFloatAsState(if (on) 1f else 0f, tween(240), label = "toggle")
@@ -196,11 +236,11 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
                 ) {
                     Text(
                         if (pulse > 0.4f) "impulso dopaminérgico" else "potencial de repouso",
-                        style = Type.caption.copy(color = if (pulse > 0.4f) Ink.amber else Ink.dim),
+                        style = Type.caption.copy(color = if (pulse > 0.4f) Ink.aqua else Ink.dim),
                     )
                     Text(
                         "%.2f".format(pulse),
-                        style = Type.title.copy(color = if (pulse > 0.4f) Ink.amber else Ink.paper),
+                        style = Type.title.copy(color = if (pulse > 0.4f) Ink.aqua else Ink.paper),
                     )
                 }
                 Column(Modifier.align(Alignment.TopEnd).padding(16.dp), horizontalAlignment = Alignment.End) {
@@ -365,26 +405,20 @@ fun ChatScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
                 item { TypingBubble() }
             }
         }
-        Row(
-            Modifier
+        MessageBar(
+            value = draft,
+            onValueChange = { draft = it },
+            placeholder = "o que é entropia?",
+            enabled = draft.isNotBlank() && !state.busy,
+            onSend = {
+                vm.send(draft)
+                draft = ""
+            },
+            modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .padding(top = 8.dp, bottom = 104.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            InputField(
-                value = draft,
-                onValueChange = { draft = it },
-                placeholder = "o que é entropia?",
-                modifier = Modifier.weight(1f),
-                singleLine = false,
-            )
-            Spacer(Modifier.width(10.dp))
-            SendButton(enabled = draft.isNotBlank() && !state.busy) {
-                vm.send(draft)
-                draft = ""
-            }
-        }
+        )
     }
 }
 
@@ -392,13 +426,12 @@ fun ChatScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
 private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(52.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .size(46.dp)
+            .clip(RoundedCornerShape(50))
             .background(
                 if (enabled) Brush.linearGradient(listOf(Ink.cyan, Ink.indigo))
                 else Brush.linearGradient(listOf(Color(0x18FFFFFF), Color(0x18FFFFFF)))
             )
-            .border(0.8.dp, Ink.strokeStrong, RoundedCornerShape(18.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -449,7 +482,7 @@ private fun TypingBubble() {
                 .background(Color(0x14FFFFFF))
                 .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Text("disparando…", style = Type.callout.copy(color = Ink.aqua))
+            Text("pensando…", style = Type.callout.copy(color = Ink.aqua))
         }
     }
 }
@@ -530,7 +563,7 @@ fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                         style = Type.callout,
                     )
                 }
-                Pill("PDF", Ink.amber)
+                Pill("PDF", Ink.cyan)
             }
             Spacer(Modifier.height(12.dp))
             GlassButton(
@@ -591,7 +624,7 @@ fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Pill("+${report.newWords} palavras", Ink.cyan)
                     Pill("${report.links} sinapses", Ink.violet)
-                    Pill("${report.definitions} definições", Ink.amber)
+                    Pill("${report.definitions} definições", Ink.violet)
                 }
                 if (report.anchors > 0 || report.bridges > 0) {
                     Spacer(Modifier.height(6.dp))
@@ -604,7 +637,7 @@ fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "ponte nova: $bridge",
-                        style = Type.caption.copy(color = Ink.amber, letterSpacing = 0.sp),
+                        style = Type.caption.copy(color = Ink.aqua, letterSpacing = 0.sp),
                         maxLines = 2,
                     )
                 }
@@ -703,7 +736,7 @@ fun LexiconScreen(state: UiState, vm: ConectomaViewModel, contentPadding: Paddin
                 Spacer(Modifier.height(10.dp))
                 DistRow("cosseno (semântica)", ((1f - cos) / 2f), Ink.aqua)
                 DistRow("geodésica (grafo)", if (graph < 0f) 0f else graph, Ink.violet)
-                DistRow("morfológica", 0f, Ink.amber)
+                DistRow("morfológica", 0f, Ink.mist)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     if (graph < 0f)
@@ -783,7 +816,7 @@ fun PlasticityScreen(state: UiState, vm: ConectomaViewModel, contentPadding: Pad
         Text("STDP de três fatores: elegibilidade × dopamina × força nativa", style = Type.callout)
         Spacer(Modifier.height(18.dp))
 
-        GlassPanel(Modifier.fillMaxWidth(), glow = Ink.amber) {
+        GlassPanel(Modifier.fillMaxWidth(), glow = Ink.aqua) {
             Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     DopamineDial(stats?.dopamine ?: 0f, Modifier.size(96.dp))
@@ -885,7 +918,7 @@ fun DopamineDial(level: Float, modifier: Modifier = Modifier) {
             style = Stroke(stroke, cap = StrokeCap.Round),
         )
         drawArc(
-            brush = Brush.sweepGradient(listOf(Ink.aqua, Ink.amber, Ink.amber)),
+            brush = Brush.sweepGradient(listOf(Ink.aqua, Ink.indigo, Ink.violet)),
             startAngle = 135f,
             sweepAngle = 270f * animated,
             useCenter = false,

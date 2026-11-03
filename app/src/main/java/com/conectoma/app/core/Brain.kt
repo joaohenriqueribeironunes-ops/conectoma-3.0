@@ -58,7 +58,21 @@ class Brain private constructor(val context: Context) {
     var totalSpikes = 0L
         private set
 
+    /** evita inicialização dupla (app + serviço autônomo pedindo ao mesmo tempo) */
+    private val initLock = Any()
+    @Volatile
+    private var initializing = false
+
+    /**
+     * Idempotente: uma segunda chamada durante (ou depois de) a primeira não
+     * reconstrói os motores — reconstruir perderia a memória em curso e era a
+     * principal fonte de falha de runtime no boot.
+     */
     suspend fun initialize(onStage: (String, Float) -> Unit) = withContext(Dispatchers.Default) {
+        val shouldRun = synchronized(initLock) {
+            if (ready || initializing) false else { initializing = true; true }
+        }
+        if (!shouldRun) return@withContext
         try {
             onStage("abrindo o conectoma", 0.05f)
             connectome = Connectome.load(context)
@@ -80,11 +94,27 @@ class Brain private constructor(val context: Context) {
         } catch (t: Throwable) {
             loadError = t.message ?: t::class.java.simpleName
             ready = false
+        } finally {
+            synchronized(initLock) { initializing = false }
         }
     }
 
     // ------------------------------------------------------------------ dialogue
     fun ask(text: String): ReasoningEngine.Response = synchronized(learningLock) {
+        if (!ready || !this::reasoning.isInitialized) {
+            return ReasoningEngine.Response(
+                text = "Ainda estou acordando — tente de novo em instantes.",
+                hits = emptyList(),
+                dopamine = dopamine.level,
+                reward = 0f,
+                newLinks = 0,
+                potentiated = 0,
+                spikes = 0,
+                learnedWords = 0,
+                elapsedMs = 0L,
+                kind = ReasoningEngine.Kind.PERGUNTA,
+            )
+        }
         val response = reasoning.respond(text)
         totalLearningEvents++
         totalSpikes += response.spikes
@@ -141,10 +171,19 @@ class Brain private constructor(val context: Context) {
 
     /** the core text-learning pass: co-occurrence, definitions, assemblies */
     private fun absorb(title: String, url: String, text: String): IngestReport =
-        synchronized(learningLock) { absorbLocked(title, url, text) }
+        synchronized(learningLock) {
+            if (!ready || !this::semantics.isInitialized) {
+                return IngestReport(title, url, 0, 0, 0, 0, emptyList(), 0f, "o conectoma ainda está carregando")
+            }
+            absorbLocked(title, url, text)
+        }
 
+    /**
+     * Deep-read integral: cada frase e cada palavra do material entram na rede,
+     * sem teto de frases, de palavras por frase ou de palavras novas.
+     */
     private fun absorbLocked(title: String, url: String, text: String): IngestReport {
-        val sentences = Tokenizer.sentences(text).take(700)
+        val sentences = Tokenizer.sentences(text)
         var newWords = 0
         var links = 0
         var definitions = 0
@@ -152,12 +191,12 @@ class Brain private constructor(val context: Context) {
         val seenPairs = HashSet<Long>()
 
         for (sentence in sentences) {
-            val words = Tokenizer.contentWords(sentence).take(24)
+            val words = Tokenizer.contentWords(sentence)
             if (words.size < 2) continue
             val ids = ArrayList<Int>(words.size)
             for (w in words) {
                 var id = semantics.idOf(w)
-                if (id < 0 && newWords < 220) {
+                if (id < 0) {
                     id = semantics.idOrCreate(w, ids.takeLast(2))
                     if (id >= 0) newWords++
                 }
@@ -168,10 +207,8 @@ class Brain private constructor(val context: Context) {
             }
             if (ids.size < 2) continue
             val window = 3
-            var pairs = 0
             for (i in ids.indices) {
                 for (j in i + 1 until minOf(ids.size, i + 1 + window)) {
-                    if (pairs >= 10) break
                     val a = ids[i]
                     val b = ids[j]
                     val key = (minOf(a, b).toLong() shl 32) or maxOf(a, b).toLong()
@@ -179,7 +216,6 @@ class Brain private constructor(val context: Context) {
                     val before = semantics.linkWeight(a, b)
                     semantics.reinforce(a, b, 0.11f)
                     if (semantics.linkWeight(a, b) > before + 0.003f) links++
-                    pairs++
                 }
             }
             definitions += extractDefinitions(sentence, ids)
@@ -194,9 +230,12 @@ class Brain private constructor(val context: Context) {
         totalSpikes += network.totalSpikes
 
         // reverberação profunda pelo material novo para integrar melhor
-        val focus = concepts.take(9)
+        val focus = concepts.take(24)
         if (focus.size >= 2) {
-            val cands = focus.flatMap { semantics.neighborsOf(it).take(9).map { n -> n.first } }.distinct().take(160)
+            val cands = focus.flatMap { semantics.neighborsOf(it).map { n -> n.first } }
+                .distinct()
+                .filter { semantics.exists(it) }
+                .take(600)
             val thought = reasoning.think(focus, cands, steps = 34)
             lastCoverage = thought.coverage
             lastSynapsesSwept = thought.synapsesSwept
@@ -255,6 +294,9 @@ class Brain private constructor(val context: Context) {
     )
 
     suspend fun autonomousStep(allowNetwork: Boolean): Autonomy = withContext(Dispatchers.Default) {
+        if (!ready || !this@Brain::autonomy.isInitialized) {
+            return@withContext Autonomy("", 0, 0, 0f, "o conectoma ainda está carregando", null, "")
+        }
         val task = autonomy.nextTask(pendingConsolidation, allowNetwork, rng)
         autonomy.record(task)
         var topic = ""
@@ -315,14 +357,11 @@ class Brain private constructor(val context: Context) {
 
     /** uma fala que nasce do estado interno, sem pergunta do usuário */
     fun spontaneous(): ReasoningEngine.Spontaneous? = synchronized(learningLock) {
+        if (!ready || !this::reasoning.isInitialized) return null
         val s = runCatching { reasoning.spontaneous(rng, recentConcepts.toList()) }.getOrNull() ?: return null
         spontaneousCount++
         prefs.edit().putInt("spontaneous", spontaneousCount).apply()
         s
-    }
-
-    private fun saveIfNeeded() {
-        if (totalLearningEvents % 4 == 0) save()
     }
 
     // ------------------------------------------------------------------ stats
@@ -357,7 +396,9 @@ class Brain private constructor(val context: Context) {
         val antiEpilepsyTrips: Int = 0,
     )
 
-    fun stats(): Stats {
+    /** null antes do boot pronto: nenhum acesso a `lateinit` estoura em runtime. */
+    fun stats(): Stats? {
+        if (!ready || !this::connectome.isInitialized || !this::semantics.isInitialized) return null
         var sum = 0.0
         for (p in connectome.plastic) sum += p
         val trace = if (this::cognition.isInitialized) cognition.lastTrace else null
@@ -408,7 +449,8 @@ class Brain private constructor(val context: Context) {
     }
 
     fun save() {
-        val st = stats()
+        if (!ready) return
+        val st = stats() ?: return
         prefs.edit()
             .putString("semantics", semantics.serialiseLearned())
             .putInt("events", totalLearningEvents)
