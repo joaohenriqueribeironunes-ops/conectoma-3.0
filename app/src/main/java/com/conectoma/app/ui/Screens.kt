@@ -183,12 +183,11 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
 
         GlassPanel(Modifier.fillMaxWidth(), glow = Ink.indigo) {
             Box {
-                ConnectomeOrb(
+                Connectome25D(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1.06f),
                     connectome = vm.brain.connectomeOrNull,
-                    network = vm.brain.networkOrNull,
                 )
                 Column(
                     Modifier
@@ -205,7 +204,7 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
                     )
                 }
                 Column(Modifier.align(Alignment.TopEnd).padding(16.dp), horizontalAlignment = Alignment.End) {
-                    Pill("ao vivo", Ink.cyan)
+                    Pill("2.5D", Ink.cyan)
                 }
             }
         }
@@ -347,13 +346,12 @@ fun ChatScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
             }
         }
         Spacer(Modifier.height(10.dp))
-        ConnectomeOrb(
+        Connectome25D(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(148.dp)
                 .padding(horizontal = 14.dp),
             connectome = vm.brain.connectomeOrNull,
-            network = vm.brain.networkOrNull,
         )
         Spacer(Modifier.height(6.dp))
         LazyColumn(
@@ -437,10 +435,6 @@ private fun ChatBubble(msg: ChatMessage) {
         ) {
             Column {
                 Text(formatBold(msg.text), style = Type.body)
-                msg.meta?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(it, style = Type.mono.copy(color = Ink.aqua.copy(alpha = 0.75f), fontSize = 10.sp))
-                }
             }
         }
     }

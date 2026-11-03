@@ -4,6 +4,7 @@ import com.conectoma.app.core.CognitionEngine
 import com.conectoma.app.core.Connectome
 import com.conectoma.app.core.ConnectomeMapping
 import com.conectoma.app.core.DopamineSystem
+import com.conectoma.app.core.InputAnalyzer
 import com.conectoma.app.core.MemoryEngine
 import com.conectoma.app.core.Neuron
 import com.conectoma.app.core.Neuromodulator
@@ -302,7 +303,7 @@ class EngineTest {
     }
 
     @Test
-    fun reasoningAppendsCognitiveTraceWhenAttached() {
+    fun cognitiveTraceIsDecoupledFromAnswerText() {
         val map = ConnectomeMapping(connectome)
         val net = SpikingNetwork(connectome)
         val dopamine = DopamineSystem()
@@ -310,11 +311,45 @@ class EngineTest {
         val cognition = CognitionEngine(map, net, semantics, dopamine, memory)
         val engine = ReasoningEngine(connectome, net, semantics, dopamine, memory, cognition)
         val response = engine.respond("o que é sinapse?")
+        // a telemetria cognitiva existe, mas desacoplada do texto da resposta
         assertNotNull(response.cognitive)
-        assertTrue(
-            "traço cognitivo ausente: ${response.text.takeLast(300)}",
-            response.text.contains("**Cognição") && response.text.contains("Neuromodulação"),
-        )
+        assertTrue("traço vazou para o balão: ${response.text.takeLast(300)}",
+            !response.text.contains("**Cognição") && !response.text.contains("Neuromodulação"))
+        // e nenhuma métrica de processamento aparece no texto final
+        assertTrue("telemetria vazou: ${response.text}",
+            !response.text.contains("disparos ·") && !response.text.contains("do conectoma percorrido") &&
+                !response.text.contains("sinapses avaliadas"))
         assertTrue(response.text.length > 120)
+    }
+
+    @Test
+    fun reasoningRunsIterativeRoundsUntilStable() {
+        val dopamine = DopamineSystem()
+        val engine = ReasoningEngine(connectome, network, semantics, dopamine)
+        val response = engine.respond("como a memória se liga ao aprendizado?")
+        assertTrue("uma só janela: rounds=${response.rounds}", response.rounds >= 2)
+        assertTrue("rounds demais: ${response.rounds}", response.rounds <= 6)
+        assertTrue(response.hits.isNotEmpty())
+    }
+
+    @Test
+    fun inputAnalyzerReadsIntentBeforeSpiking() {
+        val def = InputAnalyzer.analyze("o que é sinapse?")
+        assertEquals(InputAnalyzer.Intent.DEFINICAO, def.intent)
+        assertTrue(def.question)
+
+        val rel = InputAnalyzer.analyze("como a memória se liga ao aprendizado?")
+        assertEquals(InputAnalyzer.Intent.RELACAO, rel.intent)
+        assertTrue("marcador relacional ausente", rel.relationMarkers.isNotEmpty())
+
+        val cause = InputAnalyzer.analyze("por que a dopamina causa recompensa?")
+        assertEquals(InputAnalyzer.Intent.CAUSA, cause.intent)
+        assertTrue(cause.causalMarkers.isNotEmpty())
+
+        val neg = InputAnalyzer.analyze("a memória não é sinapse")
+        assertTrue("negação não detectada", neg.negated)
+
+        val teach = InputAnalyzer.analyze("quero aprender sobre neuroplasticidade")
+        assertEquals(InputAnalyzer.Intent.ENSINO, teach.intent)
     }
 }

@@ -42,7 +42,6 @@ class Brain private constructor(val context: Context) {
 
     /** safe accessors: the UI can ask before loading finishes */
     val connectomeOrNull: Connectome? get() = if (this::connectome.isInitialized) connectome else null
-    val networkOrNull: SpikingNetwork? get() = if (this::network.isInitialized) network else null
     val semanticsOrNull: SemanticEngine? get() = if (this::semantics.isInitialized) semantics else null
 
     private val prefs = context.getSharedPreferences("conectoma", Context.MODE_PRIVATE)

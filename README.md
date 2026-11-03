@@ -21,8 +21,10 @@ Não é preciso instalar SDK, Java ou nada no PC. O APK é auto-contido.
 
 ## As três telas
 
-**Assistente** — o orbe é o conectoma vivo: cada ponto é um neurônio real, cada
-linha uma sinapse real, e os clarões são disparos. Escreva embaixo.
+**Assistente** — o conectoma em 2.5D: quatro camadas planas sobrepostas com
+paralaxe (sensorial atrás, complexo central, corpo cogumelo e motor na frente),
+cada ponto um neurônio real e cada fio uma sinapse real. A visão é estática —
+sem rotação, sem giro 3D — para não consumir GPU nem bateria. Escreva embaixo.
 
 - `o que é sinapse?` → definição + conceitos ligados + o que ele já leu sobre o tema
 - `como a música se liga à matemática?` → distância conceitual, vizinhos comuns e lembranças
@@ -30,8 +32,9 @@ linha uma sinapse real, e os clarões são disparos. Escreva embaixo.
 - **silêncio** → depois de ~30 s sem pergunta, ele puxa assunto sozinho: uma leitura
   antiga, uma ligação forte, uma lacuna de conhecimento ou uma pergunta própria
 
-Cada resposta percorre **89–93% das 3,75 milhões de sinapses** e avalia todas elas
-na varredura de plasticidade; o rodapé da mensagem mostra a cobertura do turno.
+Cada resposta percorre **94–98% das 3,75 milhões de sinapses** e avalia todas elas
+na varredura de plasticidade. A saída do balão é **só o texto final refinado** —
+disparos, cobertura, dopamina e tempos ficam na tela Cérebro, nunca na conversa.
 
 **Aprender** — cole um URL (Wikipédia funciona muito bem) **ou escolha um PDF**.
 Ele lê a página/arquivo, extrai conceitos, cria ligações e aprende palavras novas.
@@ -71,12 +74,20 @@ a calculadora de distância conceitual entre duas palavras e o painel de circuit
   um engrama com título, conceitos e até seis frases informativas. Quando o assunto
   volta, o assistente recupera as frases e cita a fonte na resposta — é o que
   transforma “conheço a palavra” em “eu li isso e posso te contar”.
-- **Pensamento largo (`ReasoningEngine`/`SpikingNetwork`)**: cada palavra acende
-  uma assembleia de ~96 neurônios (antes eram 34). A cada passo, uma amostra de
-  ~6% da população também é injetada, então o disparo se espalha pelo conectoma
-  inteiro; ao final, uma varredura global aplica STDP de três fatores nas
-  **3,75 M de sinapses**. A cobertura do turno aparece na resposta e na tela
-  Cérebro.
+- **Pensamento iterativo (`ReasoningEngine`/`SpikingNetwork`)**: antes de responder,
+  o `InputAnalyzer` lê a estrutura e a semântica da frase — intenção (definição,
+  comparação, relação, causa, exemplo, ensino), termos-foco, marcadores causais e
+  negação. Só então o conectoma dispara: cada palavra acende uma assembleia de
+  ~96 neurônios e uma amostra de ~6% da população é injetada a cada passo. O
+  raciocínio corre em **janelas iterativas fora da thread da UI** (uma janela = 12
+  ms virtuais) e continua **pensando o tempo que for necessário** até a hipótese
+  líder estabilizar (mesmo vencedor e ≥75% de sobreposição no top-8), com piso de
+  2 e teto de 6 janelas. Estabilizados, os 3 clusters vencedores são **re-disparados
+  para consolidação** e só então uma varredura global aplica STDP de três fatores
+  nas **3,75 M de sinapses**.
+- **Saída limpa**: o texto da resposta não carrega nenhuma telemetria. O traço
+  cognitivo (WM, decisão, neuromodulação) fica em `Response.cognitive`, desacoplado,
+  e só aparece nos painéis do Cérebro.
 - **Voz espontânea**: com o interruptor ligado, depois de 30 s de silêncio ele
   fala sozinho a cada ~45 s — lembrança de leitura, ligação recém-fortalecida,
   lacuna que quer estudar ou associação improvável. Também há o botão
@@ -142,9 +153,11 @@ Testes de motor (rodam na JVM, sem aparelho):
 ./gradlew testDebugUnitTest
 ```
 
-16 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização e
-o diálogo do assistente; somados aos de formatação, PDF, consolidação, memória
-episódica e motor autônomo, são **33 testes**.
+17 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização,
+análise de intenção do enunciado e o diálogo do assistente; somados aos de
+formatação, PDF, consolidação, memória episódica e motor autônomo, são
+**35 testes** — incluindo os que garantem raciocínio iterativo (2–6 janelas) e
+saída sem telemetria no balão da conversa.
 
 ## Créditos e licenças
 

@@ -60,47 +60,68 @@ class ReasoningEngine(
         val synapsesSwept: Int = 0,
         val synapsesChanged: Int = 0,
         val touchedSynapses: Long = 0L,
+        /** quantas janelas de refinamento o raciocínio iterativo usou */
+        val rounds: Int = 1,
     )
 
     data class Hit(val wordId: Int, val score: Float, val similarity: Float, val via: String)
 
     /**
-     * Inject the focus concepts and let the network reverberate.
-     * Candidates are ranked by how strongly their assembly fired.
-     *
-     * A cada passo uma amostra ampla de neurônios também é injetada: isso
-     * espalha o pensamento pelo conectoma inteiro e faz a leitura refletir a
-     * fiação real, em vez de só 34 neurônios por palavra.
+     * Fase 1 — ignite: zera a rede e injeta os conceitos-foco como assembleias.
+     * Sem simulação aqui, só o estado inicial do pensamento.
      */
-    fun think(
-        focus: List<Int>,
-        candidates: List<Int>,
-        steps: Int = 30,
-        current: Float = 48f,
-        broadFraction: Float = 0.06f,
-        rng: Random = Random(focus.firstOrNull() ?: 0),
-    ): Thought {
+    private fun ignite(focus: List<Int>, current: Float) {
         network.reset()
         network.resetCoverage()
         for ((i, id) in focus.withIndex()) {
             val amp = current * (if (i == 0) 1f else 0.82f)
             network.inject(assembly(id), amp)
         }
+    }
+
+    /**
+     * Fase 2 — advance: `steps` passos de 1 ms virtual de reverberação.
+     *
+     * A cada passo injeta-se uma amostra ampla da população ([broadFraction]),
+     * espalhando o pensamento pelas 3,75 milhões de sinapses; o foco é
+     * reacendido de tempos em tempos para a reverberação não morrer; e a
+     * homeostase segura a excitabilidade. `stepOffset` mantém a contagem de
+     * passos absoluta entre janelas (homeostase e reacendimento usam o passo
+     * global, não o da janela). Retorna os spikes gerados nesta janela.
+     */
+    private fun advance(
+        steps: Int,
+        focus: List<Int>,
+        current: Float,
+        rng: Random,
+        stepOffset: Int = 0,
+        broadFraction: Float = 0.06f,
+    ): Int {
         var spikes = 0
         val broadCount = (connectome.nodeCount * broadFraction).toInt()
         for (s in 0 until steps) {
+            val abs = stepOffset + s
             if (broadCount > 0) network.injectBroad(broadCount, BROAD_CURRENT, rng)
             // reacende o foco de tempos em tempos para a reverberação não morrer
-            if (s > 0 && s % 7 == 0) {
+            if (abs > 0 && abs % 7 == 0) {
                 for ((i, id) in focus.withIndex()) {
                     network.inject(assembly(id), current * (if (i == 0) 0.6f else 0.46f))
                 }
             }
             network.step(1f)
             cognition?.tickWorkingMemory()
-            network.homeostasis(s + 1)
+            network.homeostasis(abs + 1)
             spikes += network.spikeCount
         }
+        return spikes
+    }
+
+    /**
+     * Fase 3 — decode: a atividade de cada assembleia candidata vira um [Hit].
+     * Sinal = disparo da assembleia acima da média da rede; soma-se a
+     * similaridade semântica e o peso de ligação direta com o foco.
+     */
+    private fun decode(candidates: List<Int>, focus: List<Int>): List<Hit> {
         val act = network.activity
         val mean = network.meanActivity()
         val hits = ArrayList<Hit>(candidates.size)
@@ -117,6 +138,11 @@ class ReasoningEngine(
             hits.add(Hit(cand, score, sim, if (signal > 0.10f) "conectoma" else "semântica"))
         }
         hits.sortByDescending { it.score }
+        return hits
+    }
+
+    /** fecha o pensamento: uma única varredura global de STDP + métricas internas */
+    private fun finish(hits: List<Hit>, spikes: Int, rounds: Int): Thought {
         // a varredura global avalia as 3,75 M de sinapses e escreve nas co-ativas
         val pathPotentiated = network.lastPotentiation
         network.sweepPlasticity()
@@ -129,7 +155,88 @@ class ReasoningEngine(
             synapsesSwept = network.lastSweepExamined,
             synapsesChanged = network.lastSweepChanged,
             touchedSynapses = network.touchedSynapses(),
+            rounds = rounds,
         )
+    }
+
+    /**
+     * Pensamento em janela única (exploração autônoma e caminho rápido):
+     * ignite → advance → decode → uma varredura global de STDP.
+     */
+    fun think(
+        focus: List<Int>,
+        candidates: List<Int>,
+        steps: Int = 30,
+        current: Float = 48f,
+        broadFraction: Float = 0.06f,
+        rng: Random = Random(focus.firstOrNull() ?: 0),
+    ): Thought {
+        ignite(focus, current)
+        val spikes = advance(steps, focus, current, rng, 0, broadFraction)
+        return finish(decode(candidates, focus), spikes, rounds = 1)
+    }
+
+    /**
+     * Fase iterativa — "pense o tempo que for necessário".
+     *
+     * A simulação é dividida em janelas de [chunkSteps] ms virtuais. Após cada
+     * janela os candidatos são decodificados e a hipótese líder é comparada à
+     * da janela anterior: só se encerra quando a liderança estabiliza (mesmo
+     * vencedor e sobreposição >= [STABLE_OVERLAP] entre os [STABLE_TOP]
+     * primeiros) — no mínimo [minRounds] janelas (para existir consolidação
+     * real) e no máximo [maxRounds] (teto de CPU no aparelho).
+     *
+     * Estabilizados os clusters vencedores, os 3 primeiros são re-disparados
+     * numa janela curta de consolidação (reverberação biológica: o que
+     * sobrevive ao re-acendimento é o que fica gravado) e só então corre uma
+     * única varredura global de STDP pelas 3,75 M de sinapses.
+     */
+    fun thinkIterative(
+        focus: List<Int>,
+        candidates: List<Int>,
+        current: Float = 48f,
+        rng: Random = Random(focus.firstOrNull() ?: 0),
+        chunkSteps: Int = 12,
+        minRounds: Int = 2,
+        maxRounds: Int = 6,
+    ): Thought {
+        ignite(focus, current)
+        var spikes = 0
+        var step = 0
+        var rounds = 0
+        var previousTop = emptyList<Int>()
+        var hits = emptyList<Hit>()
+        while (rounds < maxRounds) {
+            spikes += advance(chunkSteps, focus, current, rng, step)
+            step += chunkSteps
+            rounds++
+            hits = decode(candidates, focus)
+            val topNow = hits.take(STABLE_TOP).map { it.wordId }
+            val stable = rounds >= minRounds &&
+                previousTop.isNotEmpty() &&
+                topNow.firstOrNull() == previousTop.firstOrNull() &&
+                overlap(topNow, previousTop) >= STABLE_OVERLAP
+            previousTop = topNow
+            if (stable) break
+        }
+        // consolidação: re-dispara os clusters vencedores por mais alguns ms
+        val winners = hits.take(3).map { it.wordId }
+        if (winners.isNotEmpty()) {
+            for ((i, id) in winners.withIndex()) {
+                network.inject(assembly(id), current * (0.55f - 0.08f * i))
+            }
+            spikes += advance(CONSOLIDATION_STEPS, winners, current * 0.7f, rng, step)
+        }
+        return finish(hits, spikes, rounds)
+    }
+
+    /** fração de sobreposição entre duas listas de candidatos (0..1) */
+    private fun overlap(a: List<Int>, b: List<Int>): Float {
+        if (a.isEmpty() || b.isEmpty()) return 0f
+        val setB = b.toHashSet()
+        var shared = 0
+        for (id in a) if (id in setB) shared++
+        return shared.toFloat() / maxOf(a.size, b.size)
     }
 
     data class Response(
@@ -147,6 +254,10 @@ class ReasoningEngine(
         val synapsesSwept: Int = 0,
         val factsUsed: Int = 0,
         val cognitive: CognitionEngine.Trace? = null,
+        /** janelas de refinamento usadas pelo raciocínio iterativo */
+        val rounds: Int = 1,
+        /** intenção detectada no enunciado antes de responder */
+        val intent: InputAnalyzer.Intent = InputAnalyzer.Intent.REFLEXAO,
     )
 
     enum class Kind { APRENDIZADO, RESPOSTA, PERGUNTA, REFLEXAO }
@@ -158,6 +269,8 @@ class ReasoningEngine(
      */
     fun respond(input: String, knownOnly: Boolean = false): Response {
         val t0 = System.currentTimeMillis()
+        // 1. leitura estrutural/semântica da frase ANTES de qualquer disparo
+        val analysis = InputAnalyzer.analyze(input)
         val content = Tokenizer.contentWords(input)
         val unknown = ArrayList<String>()
         val focus = ArrayList<Int>()
@@ -174,10 +287,13 @@ class ReasoningEngine(
                 "Não consegui extrair conceitos dessa frase. Tente nomear algo: “o que é entropia?”",
                 emptyList(), dopamine.level, 0f, 0, 0, 0, semantics.learnedWords,
                 System.currentTimeMillis() - t0, Kind.PERGUNTA,
+                intent = analysis.intent,
             )
         }
         // the subject is the most specific word, not simply the first one
-        focus.sortBy { if (semantics.frequency(it) <= 0) 1 else semantics.frequency(it) }
+        val ordered = InputAnalyzer.prioritize(focus, semantics)
+        focus.clear()
+        focus.addAll(ordered)
         val head = focus[0]
 
         val candidates = LinkedHashSet<Int>()
@@ -190,7 +306,8 @@ class ReasoningEngine(
 
         network.dopamine = dopamine.level.coerceAtLeast(0.12f)
         cognition?.beginTurn(focus)
-        val thought = think(focus, cands, steps = 30, rng = Random(input.hashCode().toLong()))
+        // 2. raciocínio iterativo: janelas de refinamento até a hipótese estabilizar
+        val thought = thinkIterative(focus, cands, rng = Random(input.hashCode().toLong()))
         val top = thought.hits.filter { it.wordId !in focus }.take(10)
         val facts = memory?.factsFor(focus, 5) ?: emptyList()
         val trace = cognition?.observe(
@@ -239,11 +356,9 @@ class ReasoningEngine(
         dopamine.reward(reward, if (freshDef) "definição nova" else if (facts.isNotEmpty()) "lembrança integrada" else "associação semântica")
         network.dopamine = dopamine.phasic.coerceAtLeast(0f)
 
-        var text = buildResponse(input, focus, rankedTop, unknown, freshDef, thought, facts)
-        val traceText = if (trace != null) cognition?.describe(trace).orEmpty() else ""
-        if (traceText.isNotBlank()) {
-            text = text + "\n\n" + traceText
-        }
+        // 3. a resposta é só o texto final refinado: telemetria (traço cognitivo,
+        //    métricas de disparo/sinapses) fica desacoplada em Response.cognitive
+        val text = buildResponse(input, focus, rankedTop, unknown, freshDef, facts, analysis)
         val kind = when {
             freshDef -> Kind.APRENDIZADO
             input.trim().endsWith("?") -> Kind.RESPOSTA
@@ -256,6 +371,8 @@ class ReasoningEngine(
             synapsesSwept = thought.synapsesSwept,
             factsUsed = facts.size,
             cognitive = trace,
+            rounds = thought.rounds,
+            intent = analysis.intent,
         )
     }
 
@@ -289,20 +406,18 @@ class ReasoningEngine(
         top: List<Hit>,
         unknown: List<String>,
         freshDef: Boolean,
-        thought: Thought,
         facts: List<MemoryEngine.Fact>,
+        analysis: InputAnalyzer.Analysis,
     ): String {
         val seed = input.hashCode() * 31 + turn++
         val head = semantics.name(focus[0])
-        val isQuestion = input.trim().endsWith("?")
-        val lower = input.lowercase()
-        val relMarkers = listOf(
-            "se liga", "relaciona", "relação", "conexão", "conexao", "tem a ver",
-            "parecid", "diferença", "diferenca", "conecta", "liga",
-        )
 
-        if (!freshDef && focus.size >= 2 && relMarkers.any { lower.contains(it) }) {
-            return buildRelationResponse(input, focus, top, thought, facts, seed)
+        // roteamento pela intenção detectada antes do disparo
+        val relational = analysis.intent == InputAnalyzer.Intent.RELACAO ||
+            analysis.intent == InputAnalyzer.Intent.COMPARACAO ||
+            (!freshDef && focus.size >= 2 && analysis.relationMarkers.isNotEmpty())
+        if (!freshDef && focus.size >= 2 && relational) {
+            return buildRelationResponse(focus, top, facts, seed, analysis)
         }
 
         val sb = StringBuilder()
@@ -318,6 +433,23 @@ class ReasoningEngine(
             sb.append(pick(NO_KNOWLEDGE_OPENERS, seed)).append(head).append(".\n\n")
         } else {
             sb.append(pick(NO_DEFINITION_OPENERS, seed)).append(head).append(".\n\n")
+        }
+
+        // pergunta causal: o conectoma procura a origem no grafo, não só a definição
+        if (analysis.intent == InputAnalyzer.Intent.CAUSA && analysis.causalMarkers.isNotEmpty()) {
+            val cause = causalLink(focus[0], top)
+            sb.append("**Por que isso acontece.** ")
+            sb.append(
+                if (cause != null) "o caminho que encontrei liga ${head} a ${semantics.name(cause)} — " +
+                    "essa é a rota de menor resistência para a causa.\n\n"
+                else "ainda não tenho a rota causal de ${head} no grafo; me dê um exemplo e eu ligo a causa ao efeito.\n\n"
+            )
+        }
+
+        // negação detectada: o motor declara que tratou a frase como recuso
+        if (analysis.negated && analysis.intent != InputAnalyzer.Intent.DEFINICAO) {
+            sb.append("Entendi a negação — não vou tratar isso como afirmação. ")
+            sb.append("Sigo pelo que resta da frase.\n\n")
         }
 
         if (top.isNotEmpty()) {
@@ -370,14 +502,6 @@ class ReasoningEngine(
             sb.append("\n\n")
         }
 
-        if (thought.spikes > 0) {
-            sb.append(thought.spikes).append(" disparos · ")
-            sb.append(thought.potentiated).append(" sinapses reforçadas no caminho")
-            sb.append(" · ").append(grouped(thought.synapsesChanged)).append(" atualizadas pela varredura global")
-            sb.append(" · ").append((thought.coverage * 100).toInt()).append("% do conectoma percorrido")
-            sb.append(" · ").append(grouped(thought.synapsesSwept)).append(" sinapses avaliadas\n\n")
-        }
-
         if (unknown.isNotEmpty()) {
             sb.append("Aprendi ").append(unknown.take(4).joinToString(", ")).append(" agora mesmo — ")
             sb.append("posicionei no espaço semântico pelo contexto da frase.\n\n")
@@ -387,19 +511,40 @@ class ReasoningEngine(
         return sb.toString().trim()
     }
 
+    /**
+     * Rota causal: entre os candidatos que acenderam, escolhe o mais próximo
+     * do foco no grafo — é dele que parte a explicação de "por que".
+     */
+    private fun causalLink(focusId: Int, top: List<Hit>): Int? {
+        var best: Int? = null
+        var bestD = Float.MAX_VALUE
+        for (h in top.take(8)) {
+            val d = semantics.distance(focusId, h.wordId)
+            if (d < bestD) {
+                bestD = d
+                best = h.wordId
+            }
+        }
+        return if (best != null && bestD < 0.92f) best else null
+    }
+
     private fun buildRelationResponse(
-        input: String,
         focus: List<Int>,
         top: List<Hit>,
-        thought: Thought,
         facts: List<MemoryEngine.Fact>,
         seed: Int,
+        analysis: InputAnalyzer.Analysis,
     ): String {
         val a = focus[0]
         val b = focus[1]
         val d = semantics.distance(a, b)
         val sb = StringBuilder()
-        sb.append(pick(RELATION_OPENERS, seed)).append("\n\n")
+        // comparação e relação pedem enquadramentos diferentes
+        if (analysis.intent == InputAnalyzer.Intent.COMPARACAO) {
+            sb.append("Duas ideias, medidas no mesmo grafo.\n\n")
+        } else {
+            sb.append(pick(RELATION_OPENERS, seed)).append("\n\n")
+        }
         sb.append("**").append(semantics.name(a)).append("** e **").append(semantics.name(b))
         sb.append("** estão a ").append(fmt(d)).append(" de distância conceitual. ")
         sb.append(
@@ -445,13 +590,6 @@ class ReasoningEngine(
         if (top.isNotEmpty()) {
             sb.append("**O conectoma também acendeu:** ")
             sb.append(top.take(4).joinToString(", ") { semantics.name(it.wordId) }).append(".\n\n")
-        }
-
-        if (thought.spikes > 0) {
-            sb.append(thought.spikes).append(" disparos · ")
-            sb.append((thought.coverage * 100).toInt()).append("% do conectoma percorrido · ")
-            sb.append(grouped(thought.synapsesChanged)).append(" sinapses atualizadas · ")
-            sb.append(grouped(thought.synapsesSwept)).append(" sinapses avaliadas\n\n")
         }
 
         sb.append(pick(RELATION_FOLLOW_UPS, seed shr 5).replace("{a}", semantics.name(a)).replace("{b}", semantics.name(b)))
@@ -659,6 +797,10 @@ class ReasoningEngine(
     companion object {
         private const val ASSEMBLY_SIZE = 96
         private const val BROAD_CURRENT = 14.6f
+        // raciocínio iterativo: janela, estabilidade e consolidação
+        private const val STABLE_TOP = 8
+        private const val STABLE_OVERLAP = 0.75f
+        private const val CONSOLIDATION_STEPS = 6
 
         private val LEARNED_ACK = listOf(
             "Gravado. Isso agora faz parte do conectoma.",

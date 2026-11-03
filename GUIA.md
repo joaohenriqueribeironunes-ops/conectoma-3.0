@@ -16,8 +16,8 @@ Requisitos: Android 8 ou superior, ~250 MB livres, internet opcional.
 
 ## 2. Usar
 
-**Tela Assistente** — o orbe é o cérebro: cada ponto é um neurônio, cada fio uma
-sinapse, os clarões são disparos. Escreva no campo de baixo.
+**Tela Assistente** — o conectoma em 2.5D, em quatro camadas com paralaxe.
+Cada ponto é um neurônio real, cada fio uma sinapse real. Escreva no campo de baixo.
 
 | você escreve | ele faz |
 |---|---|

@@ -12,11 +12,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * Mensagem do chat — apenas o texto final refinado.
+ * Sem campo de telemetria: métricas internas ficam em [UiState.stats] e
+ * somente nos painéis do Cérebro, nunca no balão da conversa.
+ */
 data class ChatMessage(
     val id: Long,
     val fromUser: Boolean,
     val text: String,
-    val meta: String? = null,
 )
 
 data class UiState(
@@ -33,7 +37,6 @@ data class UiState(
     val spontaneousEnabled: Boolean = true,
     val lastReport: String? = null,
     val pulse: Int = 0,
-    val thinking: Int = 0,
     val pdfName: String? = null,
     val pdfPages: Int = 0,
     val pdfChars: Int = 0,
@@ -55,7 +58,8 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun load() {
-        viewModelScope.launch {
+        // fora da thread principal: montar 3,75 M de sinapses não pode travar a UI
+        viewModelScope.launch(Dispatchers.Default) {
             _state.update { it.copy(ready = false, error = null, stage = "abrindo o conectoma") }
             brain.initialize { stage, progress ->
                 _state.update { it.copy(stage = stage, progress = progress) }
@@ -80,7 +84,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                         spontaneousEnabled = spontaneousOn,
                         stats = runCatching { brain.stats() }.getOrNull(),
                         messages = listOf(
-                            ChatMessage(++seq, false, greeting, "substrato carregado")
+                            ChatMessage(++seq, false, greeting)
                         ),
                     )
                 }
@@ -126,10 +130,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                 lastSpontaneous = now
                 _state.update {
                     it.copy(
-                        messages = it.messages + ChatMessage(
-                            ++seq, false, said.text,
-                            "espontâneo · ${said.kind} · ${said.topic.take(60)}",
-                        ),
+                        messages = it.messages + ChatMessage(++seq, false, said.text),
                         autonomyLog = (listOf("falou sozinho sobre ${said.topic}") + it.autonomyLog).take(24),
                         stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                     )
@@ -142,20 +143,16 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isBlank() || _state.value.busy) return
         lastInteraction = System.currentTimeMillis()
         val user = ChatMessage(++seq, true, text.trim())
-        _state.update { it.copy(messages = it.messages + user, busy = true, thinking = it.thinking + 1) }
+        _state.update { it.copy(messages = it.messages + user , busy = true) }
         viewModelScope.launch(Dispatchers.Default) {
             val response = runCatching { brain.ask(text) }
             _state.update { st ->
                 st.copy(
                     busy = false,
-                    thinking = (st.thinking - 1).coerceAtLeast(0),
+                    // só o texto final refinado: sem disparos, cobertura, dopamina ou ms
                     messages = st.messages + ChatMessage(
                         ++seq, false,
                         response.getOrNull()?.text ?: "Não consegui raciocinar agora: ${response.exceptionOrNull()?.message}",
-                        response.getOrNull()?.let {
-                            "${it.spikes} disparos · ${(it.coverage * 100).toInt()}% das sinapses · " +
-                                "${it.newLinks} links novos · ${it.factsUsed} lembranças · dopamina ${pct(it.dopamine)} · ${it.elapsedMs} ms"
-                        },
                     ),
                     pulse = if ((response.getOrNull()?.dopamine ?: 0f) > 0.25f) st.pulse + 1 else st.pulse,
                     stats = runCatching { brain.stats() }.getOrNull() ?: st.stats,
@@ -190,7 +187,6 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                             "Li **${report.title}**. Guardei ${brain.memory.factCount} fatos no total — " +
                                 "um deles é este:\n\n“${firstFact.text.take(240)}”\n\n" +
                                 "Agora posso responder usando o que li, não só o dicionário.",
-                            "leitura integrada · ${report.concepts.take(4).joinToString(" · ")}",
                         )
                     } else it.messages,
                 )
@@ -249,7 +245,6 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
                             "e reforcei ${report.links} sinapses." +
                             (firstFact?.let { f -> "\n\nGuardei na memória: “${f.text.take(240)}”" } ?: "") +
                             "\n\nO que você quer saber sobre ele?",
-                        "PDF · ${report.concepts.take(4).joinToString(" · ")}",
                     ),
                 )
             }
@@ -259,16 +254,15 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     fun autonomousOnce() {
         lastInteraction = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.Default) {
-            _state.update { it.copy(thinking = it.thinking + 1) }
+            _state.update { it.copy(busy = true) }
             val media = brain.autonomousStep(allowNetwork = true)
             _state.update {
                 it.copy(
-                    thinking = (it.thinking - 1).coerceAtLeast(0),
+                    busy = false,
                     autonomyLog = (listOf(media.description) + it.autonomyLog).take(24),
                     messages = it.messages + ChatMessage(
                         ++seq, false,
                         "Fui aprender sozinho: ${media.description}.",
-                        "autônomo · ${media.newWords} palavras novas · insight ${"%.2f".format(media.insight)}",
                     ),
                     pulse = if (media.insight > 0.45f) it.pulse + 1 else it.pulse,
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
@@ -281,14 +275,14 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     fun thinkAloud() {
         lastInteraction = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.Default) {
-            _state.update { it.copy(thinking = it.thinking + 1) }
+            _state.update { it.copy(busy = true) }
             val media = runCatching { brain.autonomousStep(allowNetwork = false) }.getOrNull()
             val text = if (media == null) "Não consegui pensar agora."
             else "Pensando sozinho: ${media.description}."
             _state.update {
                 it.copy(
-                    thinking = (it.thinking - 1).coerceAtLeast(0),
-                    messages = it.messages + ChatMessage(++seq, false, text, "reflexão interna"),
+                    busy = false,
+                    messages = it.messages + ChatMessage(++seq, false, text),
                     pulse = if ((media?.insight ?: 0f) > 0.45f) it.pulse + 1 else it.pulse,
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                 )
@@ -331,10 +325,7 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
             lastSpontaneous = System.currentTimeMillis()
             _state.update {
                 it.copy(
-                    messages = it.messages + ChatMessage(
-                        ++seq, false, said.text,
-                        "espontâneo · ${said.kind} · ${said.topic.take(60)}",
-                    ),
+                    messages = it.messages + ChatMessage(++seq, false, said.text),
                     autonomyLog = (listOf("falou sozinho sobre ${said.topic}") + it.autonomyLog).take(24),
                     stats = runCatching { brain.stats() }.getOrNull() ?: it.stats,
                 )
@@ -366,8 +357,5 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         private const val IDLE_BEFORE_SPEAKING = 30_000L
         private const val SPONTANEOUS_INTERVAL = 45_000L
-
-        fun pct(v: Float) = Numbers.percent(v)
-        fun formatEdge(e: Int) = Numbers.grouped(e)
     }
 }
