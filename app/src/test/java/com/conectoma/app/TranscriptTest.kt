@@ -1,6 +1,8 @@
 package com.conectoma.app
 
+import com.conectoma.app.core.CognitionEngine
 import com.conectoma.app.core.Connectome
+import com.conectoma.app.core.ConnectomeMapping
 import com.conectoma.app.core.DopamineSystem
 import com.conectoma.app.core.MemoryEngine
 import com.conectoma.app.core.Neuron
@@ -47,7 +49,11 @@ class TranscriptTest {
                 "A dopamina sinaliza recompensa e modula a força das sinapses.",
             concepts,
         )
-        val engine = ReasoningEngine(connectome, network, semantics, DopamineSystem(), memory)
+        val dopamine = DopamineSystem()
+        val mapping = ConnectomeMapping(connectome)
+        val cognition = CognitionEngine(mapping, network, semantics, dopamine, memory)
+        val engine = ReasoningEngine(connectome, network, semantics, dopamine, memory, cognition)
+        println("MAPA FUNCIONAL: ${mapping.summary()}")
 
         val prompts = listOf(
             "o que é sinapse?",

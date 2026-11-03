@@ -41,7 +41,7 @@ sozinho e continuar mesmo com o app fechado (serviço em primeiro plano).
 
 **Cérebro** — dopamina acumulada, **motor autônomo** (liga/desliga, tarefas,
 leituras, pontes e insights), conexões que você fortaleceu, busca no dicionário e
-a calculadora de distância conceitual entre duas palavras.
+a calculadora de distância conceitual entre duas palavras e o painel de circuitos cognitivos (complexo central, memória de trabalho, corpo cogumelo, neuromodulação).
 
 ## O que é real aqui
 
@@ -87,6 +87,14 @@ a calculadora de distância conceitual entre duas palavras.
   tem significado, ou palavra comum que nunca entrou em nenhuma ligação) ou
   aproximar dois conceitos distantes quando está sem rede. Roda no app e em
   segundo plano via serviço em primeiro plano.
+- **Camada cognitiva (`ConnectomeMapping`/`WorkingMemory`/`CognitionEngine`)**: o complexo
+  central (CX, CB.FB*, CB.EB*) vira **memória de trabalho e controle de contexto**, com
+  unidades de Izhikevich de 2 variáveis; o corpo cogumelo (MBON, MBIN, Kenyon, DAN/PAM,
+  expandido por 1 salto sináptico) vira **associação semântica**. Um `Neuromodulator`
+  global (ACh, GABA, DA, 5-HT, NA) ajusta os ganhos de excitação/inibição e o ruído de
+  membrana a cada passo, com guarda anti-epilepsia. A hipótese vencedora sai de um
+  softmax sobre as respostas reordenadas pela memória de trabalho, e cada resposta fecha
+  com um traço curto de cognição + neuromodulação. Sem rede, sem LLM: só spikes e álgebra.
 - **As definições vêm do Wikcionário em português** (28 mil verbetes) mais um
   glossário de neurociência curado à mão.
 
@@ -134,9 +142,9 @@ Testes de motor (rodam na JVM, sem aparelho):
 ./gradlew testDebugUnitTest
 ```
 
-11 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização e
+16 testes cobrem integridade do grafo, STDP, dopamina, semântica, tokenização e
 o diálogo do assistente; somados aos de formatação, PDF, consolidação, memória
-episódica e motor autônomo, são **28 testes**.
+episódica e motor autônomo, são **33 testes**.
 
 ## Créditos e licenças
 

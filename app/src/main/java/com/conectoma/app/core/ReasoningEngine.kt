@@ -23,6 +23,7 @@ class ReasoningEngine(
     private val semantics: SemanticEngine,
     private val dopamine: DopamineSystem,
     private val memory: MemoryEngine? = null,
+    private val cognition: CognitionEngine? = null,
 ) {
     private val assemblyCache = HashMap<Int, IntArray>(4096)
     private val groupCache = HashMap<Int, IntArray>()
@@ -96,6 +97,7 @@ class ReasoningEngine(
                 }
             }
             network.step(1f)
+            cognition?.tickWorkingMemory()
             network.homeostasis(s + 1)
             spikes += network.spikeCount
         }
@@ -144,6 +146,7 @@ class ReasoningEngine(
         val coverage: Float = 0f,
         val synapsesSwept: Int = 0,
         val factsUsed: Int = 0,
+        val cognitive: CognitionEngine.Trace? = null,
     )
 
     enum class Kind { APRENDIZADO, RESPOSTA, PERGUNTA, REFLEXAO }
@@ -186,14 +189,28 @@ class ReasoningEngine(
         val cands = candidates.filter { it >= 0 && (it < semantics.baseCount || it in focus) }.take(420)
 
         network.dopamine = dopamine.level.coerceAtLeast(0.12f)
+        cognition?.beginTurn(focus)
         val thought = think(focus, cands, steps = 30, rng = Random(input.hashCode().toLong()))
         val top = thought.hits.filter { it.wordId !in focus }.take(10)
+        val facts = memory?.factsFor(focus, 5) ?: emptyList()
+        val trace = cognition?.observe(
+            focus,
+            top.map { CognitionEngine.Signal(it.wordId, it.score, it.similarity, it.via) },
+            facts,
+            thought.spikes,
+        )
+        val rankedTop = if (trace != null && trace.decision.winner >= 0) {
+            val winner = trace.decision.winner
+            top.sortedByDescending { if (it.wordId == winner) 1f else 0f }
+        } else {
+            top
+        }
 
         // ---------------- learning
         var newLinks = 0
         var gainSum = 0f
         var gainCount = 0
-        for (h in top.take(4)) {
+        for (h in rankedTop.take(4)) {
             val before = semantics.linkWeight(head, h.wordId)
             semantics.reinforce(head, h.wordId, 0.22f)
             if (semantics.linkWeight(head, h.wordId) > before + 0.004f) newLinks++
@@ -205,17 +222,16 @@ class ReasoningEngine(
             for (j in i + 1 until focus.size) semantics.reinforce(focus[i], focus[j], 0.16f)
         }
         // e liga os vizinhos que acenderam juntos (aprendizado associativo)
-        for (i in top.indices) {
-            for (j in i + 1 until minOf(top.size, 5)) {
-                if (top[i].similarity > 0.25f || top[j].similarity > 0.25f) {
-                    semantics.reinforce(top[i].wordId, top[j].wordId, 0.07f)
+        for (i in rankedTop.indices) {
+            for (j in i + 1 until minOf(rankedTop.size, 5)) {
+                if (rankedTop[i].similarity > 0.25f || rankedTop[j].similarity > 0.25f) {
+                    semantics.reinforce(rankedTop[i].wordId, rankedTop[j].wordId, 0.07f)
                 }
             }
         }
         // definition hypothesis: "X é Y"
         val lowered = input.lowercase()
         val freshDef = learnDefinitionFrom(lowered, focus)
-        val facts = memory?.factsFor(focus, 5) ?: emptyList()
         val meanGain = if (gainCount > 0) gainSum / gainCount else 0f
         val memoryBonus = if (facts.isNotEmpty()) 0.10f else 0f
         val reward = (0.14f + 0.48f * meanGain + 0.10f * newLinks +
@@ -223,18 +239,23 @@ class ReasoningEngine(
         dopamine.reward(reward, if (freshDef) "definição nova" else if (facts.isNotEmpty()) "lembrança integrada" else "associação semântica")
         network.dopamine = dopamine.phasic.coerceAtLeast(0f)
 
-        val text = buildResponse(input, focus, top, unknown, freshDef, thought, facts)
+        var text = buildResponse(input, focus, rankedTop, unknown, freshDef, thought, facts)
+        val traceText = if (trace != null) cognition?.describe(trace).orEmpty() else ""
+        if (traceText.isNotBlank()) {
+            text = text + "\n\n" + traceText
+        }
         val kind = when {
             freshDef -> Kind.APRENDIZADO
             input.trim().endsWith("?") -> Kind.RESPOSTA
             else -> Kind.REFLEXAO
         }
         return Response(
-            text, top, dopamine.phasic, reward, newLinks, thought.potentiated, thought.spikes,
+            text, rankedTop, dopamine.phasic, reward, newLinks, thought.potentiated, thought.spikes,
             semantics.learnedWords, System.currentTimeMillis() - t0, kind,
             coverage = thought.coverage,
             synapsesSwept = thought.synapsesSwept,
             factsUsed = facts.size,
+            cognitive = trace,
         )
     }
 

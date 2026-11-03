@@ -29,6 +29,10 @@ class Brain private constructor(val context: Context) {
         private set
     lateinit var memory: MemoryEngine
         private set
+    lateinit var mapping: ConnectomeMapping
+        private set
+    lateinit var cognition: CognitionEngine
+        private set
     val dopamine = DopamineSystem()
 
     /** serializa todo acesso ao grafo semântico (chat, ingestão e autonomia) */
@@ -63,8 +67,11 @@ class Brain private constructor(val context: Context) {
             network = SpikingNetwork(connectome)
             onStage("carregando o léxico", 0.62f)
             semantics = SemanticEngine(context.assets.open("lexicon.bin").use { it.readBytes() })
+            onStage("mapeando circuitos cognitivos", 0.70f)
             memory = MemoryEngine(semantics)
-            reasoning = ReasoningEngine(connectome, network, semantics, dopamine, memory)
+            mapping = ConnectomeMapping(connectome)
+            cognition = CognitionEngine(mapping, network, semantics, dopamine, memory)
+            reasoning = ReasoningEngine(connectome, network, semantics, dopamine, memory, cognition)
             consolidation = ConsolidationEngine(semantics)
             autonomy = AutonomousEngine(semantics)
             onStage("reconstruindo a memória", 0.82f)
@@ -342,11 +349,19 @@ class Brain private constructor(val context: Context) {
         val spontaneous: Int,
         val coverage: Float,
         val synapsesSwept: Int,
+        val cxNeurons: Int = 0,
+        val mbNeurons: Int = 0,
+        val wmOccupancy: Int = 0,
+        val neuromodulators: String = "",
+        val cognitiveDecision: String = "",
+        val cognitiveConfidence: Float = 0f,
+        val antiEpilepsyTrips: Int = 0,
     )
 
     fun stats(): Stats {
         var sum = 0.0
         for (p in connectome.plastic) sum += p
+        val trace = if (this::cognition.isInitialized) cognition.lastTrace else null
         return Stats(
             neurons = connectome.nodeCount,
             synapses = connectome.edgeCount,
@@ -369,6 +384,13 @@ class Brain private constructor(val context: Context) {
             spontaneous = spontaneousCount,
             coverage = lastCoverage,
             synapsesSwept = lastSynapsesSwept,
+            cxNeurons = if (this::mapping.isInitialized) mapping.cxCluster.size else 0,
+            mbNeurons = if (this::mapping.isInitialized) mapping.mbCluster.size else 0,
+            wmOccupancy = if (this::cognition.isInitialized) cognition.workingMemory.occupancy() else 0,
+            neuromodulators = if (this::cognition.isInitialized) cognition.modulators.snapshot() else "",
+            cognitiveDecision = trace?.let { if (it.decision.winner >= 0) semantics.name(it.decision.winner) else "" } ?: "",
+            cognitiveConfidence = trace?.decision?.confidence ?: 0f,
+            antiEpilepsyTrips = trace?.guardTrips ?: 0,
         )
     }
 

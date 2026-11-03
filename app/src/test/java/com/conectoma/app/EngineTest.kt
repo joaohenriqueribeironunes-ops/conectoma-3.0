@@ -1,13 +1,17 @@
 package com.conectoma.app
 
+import com.conectoma.app.core.CognitionEngine
 import com.conectoma.app.core.Connectome
+import com.conectoma.app.core.ConnectomeMapping
 import com.conectoma.app.core.DopamineSystem
 import com.conectoma.app.core.MemoryEngine
 import com.conectoma.app.core.Neuron
+import com.conectoma.app.core.Neuromodulator
 import com.conectoma.app.core.ReasoningEngine
 import com.conectoma.app.core.SemanticEngine
 import com.conectoma.app.core.SpikingNetwork
 import com.conectoma.app.core.Tokenizer
+import com.conectoma.app.core.WorkingMemory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -224,5 +228,93 @@ class EngineTest {
         assertTrue(first.rootId > 0)
         val buffer: ByteBuffer = ByteBuffer.allocate(4)
         assertNotNull(buffer)
+    }
+
+    // ---------------------------------------------------------- cognitive layer
+
+    @Test
+    fun mappingSeparatesCentralComplexAndMushroomBody() {
+        val map = ConnectomeMapping(connectome)
+        println("mapa funcional: ${map.summary()}")
+        assertTrue("CX pequeno: ${map.cxCount}", map.cxCount > 100)
+        assertTrue("MB pequeno: ${map.mbCount}", map.mbCount > 100)
+        assertTrue("sem sensorial", map.inputNodes.any { map.isSensory(it) })
+        assertTrue(map.workingMemory.all { it in 0 until connectome.nodeCount })
+        assertTrue(map.contextNodes.all { it in 0 until connectome.nodeCount })
+        assertTrue(map.associationNodes.all { it in 0 until connectome.nodeCount })
+        assertTrue(map.outputNodes.all { it in 0 until connectome.nodeCount })
+    }
+
+    @Test
+    fun izhikevichWorkingMemoryKeepsConcept() {
+        val wm = WorkingMemory(16)
+        val nm = Neuromodulator()
+        nm.onTurnStart(1f, 0f, 0.8f)
+        val id = semantics.idOf("sinapse")
+        assertTrue(id >= 0)
+        wm.encode(listOf(id), 0.9f)
+        val input = FloatArray(16) { 24f }
+        var fired = 0
+        repeat(12) { fired += wm.step(input, nm) }
+        assertTrue("WM não disparou", fired > 0)
+        assertTrue(wm.top(4).any { it.conceptId == id })
+        assertTrue(wm.activationOf(id) > 0.05f)
+    }
+
+    @Test
+    fun neuromodulatorRaisesGabaAndTripsGuard() {
+        val nm = Neuromodulator()
+        nm.onTurnStart(0f, 0.2f, 0.1f)
+        val before = nm.gaba
+        repeat(5) { nm.observe(8000, 20000, 0.5f, 0.2f) }
+        assertTrue("GABA não subiu: $before -> ${nm.gaba}", nm.gaba > before)
+        assertTrue("guarda não disparou", nm.guardTrips > 0)
+        assertTrue(nm.excitability < 1.8f)
+    }
+
+    @Test
+    fun cognitionDecidesAndDescribesTrace() {
+        val map = ConnectomeMapping(connectome)
+        val net = SpikingNetwork(connectome)
+        val dopamine = DopamineSystem()
+        val cognition = CognitionEngine(map, net, semantics, dopamine)
+        val a = semantics.idOf("sinapse")
+        val b = semantics.idOf("neurônio")
+        val c = semantics.idOf("memória")
+        assertTrue(a >= 0 && b >= 0 && c >= 0)
+        val focus = listOf(b)
+        cognition.beginTurn(focus)
+        val trace = cognition.observe(
+            focus,
+            listOf(
+                CognitionEngine.Signal(a, 1.0f, 0.85f, "path"),
+                CognitionEngine.Signal(b, 0.82f, 0.75f, "semantic"),
+                CognitionEngine.Signal(c, 0.60f, 0.55f, "memory"),
+            ),
+            emptyList(),
+            5000,
+        )
+        assertTrue(trace.decision.winner >= 0)
+        assertTrue(trace.decision.confidence in 0f..1f)
+        assertEquals(3, trace.decoded.size)
+        assertTrue(cognition.describe(trace).contains("Neuromodula"))
+        assertNotNull(cognition.lastTrace)
+    }
+
+    @Test
+    fun reasoningAppendsCognitiveTraceWhenAttached() {
+        val map = ConnectomeMapping(connectome)
+        val net = SpikingNetwork(connectome)
+        val dopamine = DopamineSystem()
+        val memory = MemoryEngine(semantics)
+        val cognition = CognitionEngine(map, net, semantics, dopamine, memory)
+        val engine = ReasoningEngine(connectome, net, semantics, dopamine, memory, cognition)
+        val response = engine.respond("o que é sinapse?")
+        assertNotNull(response.cognitive)
+        assertTrue(
+            "traço cognitivo ausente: ${response.text.takeLast(300)}",
+            response.text.contains("**Cognição") && response.text.contains("Neuromodulação"),
+        )
+        assertTrue(response.text.length > 120)
     }
 }

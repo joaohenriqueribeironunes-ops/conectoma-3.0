@@ -9,8 +9,15 @@ import kotlin.random.Random
  * Every synapse carries the measured neurotransmitter profile, so inhibition and
  * excitation come from the connectome itself. Plastic weights (STDP) multiply the
  * native wiring strength; phasic dopamine gates the learning rate.
+ *
+ * Extendido para aceitar um [Neuromodulator] (ACh/GABA/DA/5-HT/NA).
+ * Os ganhos excitatórios/inibitórios e o ruído de membrana são modulados
+ * em tempo de simulação, com proteção anti-epilepsia.
  */
 class SpikingNetwork(val connectome: Connectome) {
+    /** Neuromodulação global opcional (complexo central + corpo cogumelo) */
+    var neuromodulators: Neuromodulator? = null
+    private val rngMod = Random(1337)
     val n = connectome.nodeCount
     private val edgeCount = connectome.edgeCount
 
@@ -95,6 +102,16 @@ class SpikingNetwork(val connectome: Connectome) {
         spikeCount = 0
         val decay = exp(-dt / TAU)
         val traceDecay = exp(-dt / TAU_TRACE)
+        val nm = neuromodulators
+        val exc = excGain * (nm?.excitability ?: 1f)
+        val inh = inhGain * (nm?.inhibition ?: 1f)
+        if (nm != null) {
+            val noiseCount = (n * nm.noiseFraction).toInt()
+            val amp = nm.noiseCurrent
+            repeat(noiseCount) {
+                current[rngMod.nextInt(n)] += (rngMod.nextFloat() - 0.5f) * 2f * amp
+            }
+        }
         for (i in 0 until n) {
             if (preTrace[i] > 0.001f) preTrace[i] *= traceDecay else preTrace[i] = 0f
             if (postRecent[i] > 0.001f) postRecent[i] *= traceDecay else postRecent[i] = 0f
@@ -115,7 +132,10 @@ class SpikingNetwork(val connectome: Connectome) {
                 v[i] = vi
             }
         }
-        if (spikeCount == 0) return
+        if (spikeCount == 0) {
+            nm?.observe(0, n, meanActivity(), dopamine)
+            return
+        }
         totalSpikes += spikeCount
 
         // propagate into the targets' input current and apply three-factor STDP
@@ -129,9 +149,9 @@ class SpikingNetwork(val connectome: Connectome) {
                 val dst = connectome.target(e)
                 val w = connectome.strength(e) * connectome.plastic[e]
                 if (connectome.isInhibitory(e)) {
-                    current[dst] -= inhGain * w
+                    current[dst] -= inh * w
                 } else {
-                    current[dst] += excGain * w * (0.85f + 0.3f * connectome.achProb(e))
+                    current[dst] += exc * w * (0.85f + 0.3f * connectome.achProb(e))
                 }
                 if (plasticityEnabled && postRecent[dst] > 0.35f) {
                     // pre fires before a post that just fired: long-term depression
@@ -157,6 +177,7 @@ class SpikingNetwork(val connectome: Connectome) {
                 if (potentiated > 0) lastPotentiation = potentiated
             }
         }
+        nm?.observe(spikeCount, n, meanActivity(), da)
     }
 
     private fun adjust(edge: Int, delta: Float) {

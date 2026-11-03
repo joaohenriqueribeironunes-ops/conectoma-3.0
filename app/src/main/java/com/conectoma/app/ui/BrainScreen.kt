@@ -173,6 +173,39 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
             }
         }
 
+        Spacer(Modifier.height(14.dp))
+        GlassCard(Modifier.fillMaxWidth(), tint = Ink.violet) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("circuitos cognitivos", style = Type.headline)
+                    Text(
+                        "complexo central vira memória de trabalho; corpo cogumelo vira associação semântica",
+                        style = Type.callout,
+                    )
+                }
+                Pill("${stats?.wmOccupancy ?: 0}/32", Ink.violet)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Pill("CX ${stats?.cxNeurons ?: 0}", Ink.cyan)
+                Pill("MB ${stats?.mbNeurons ?: 0}", Ink.aqua)
+                Pill("guarda ${stats?.antiEpilepsyTrips ?: 0}", Ink.amber)
+            }
+            val decision = stats?.cognitiveDecision ?: ""
+            if (decision.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "última decisão: $decision · confiança ${pct(stats?.cognitiveConfidence ?: 0f)}",
+                    style = Type.body.copy(color = Ink.paper.copy(alpha = 0.88f)),
+                )
+            }
+            val nm = stats?.neuromodulators ?: ""
+            if (nm.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(nm, style = Type.mono.copy(color = Ink.dim))
+            }
+        }
+
         Spacer(Modifier.height(18.dp))
         SectionLabel("conexões que você fortaleceu")
         Spacer(Modifier.height(10.dp))
