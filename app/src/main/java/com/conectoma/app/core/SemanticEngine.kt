@@ -401,6 +401,9 @@ class SemanticEngine(bytesIn: ByteArray) {
         if (existing >= 0) return existing
         val clean = word.lowercase().trim()
         if (clean.length < 2 || clean.length > 32) return -1
+        // teto de crescimento acumulado: memória ilimitada aqui era o caminho
+        // direto para OOM/ANR — acima do teto o léxico simplesmente para de crescer
+        if (learned.size >= MAX_LEARNED_WORDS) return -1
         val id = names.size
         names.add(clean)
         defs.add("")
@@ -460,7 +463,7 @@ class SemanticEngine(bytesIn: ByteArray) {
         val sb = StringBuilder()
         sb.append("{\"words\":[")
         var first = true
-        for ((id, v) in learned.entries.take(3000)) {
+        for ((id, v) in learned.entries.take(MAX_LEARNED_WORDS)) {
             if (!first) sb.append(',')
             first = false
             sb.append("{\"w\":\"").append(jsonEscape(names[id])).append("\",\"v\":[")
@@ -472,7 +475,7 @@ class SemanticEngine(bytesIn: ByteArray) {
         }
         sb.append("],\"links\":[")
         first = true
-        for ((k, w) in conceptLinks.entries.take(20000)) {
+        for ((k, w) in conceptLinks.entries.take(MAX_LEARNED_LINKS)) {
             val a = (k ushr 32).toInt()
             val b = k.toInt()
             if (a >= b) continue
@@ -493,6 +496,10 @@ class SemanticEngine(bytesIn: ByteArray) {
                 val o = arr.getJSONObject(i)
                 val w = o.getString("w")
                 val v = o.getJSONArray("v")
+                // dedup: seed do APK + memória do aparelho podem se sobrepor —
+                // reinserir a mesma palavra duplicaria o léxico a cada boot
+                if (index.containsKey(w)) continue
+                if (learned.size >= MAX_LEARNED_WORDS) break
                 val id = names.size
                 names.add(w)
                 defs.add("")
@@ -515,6 +522,10 @@ class SemanticEngine(bytesIn: ByteArray) {
 
     companion object {
         val POS_NAMES = arrayOf("", "subst.", "verbo", "adj.", "adv.", "nome", "pron.", "prep.", "conj.", "num.")
+        /** teto de palavras aprendidas em runtime — memória crescente, porém finita */
+        const val MAX_LEARNED_WORDS = 8_000
+        /** teto de sinapses novas aprendidas (pares de conceitos) */
+        const val MAX_LEARNED_LINKS = 40_000
         private val PT_SUFFIXES = listOf("ando", "endo", "indo", "ado", "ido", "ada", "ida", "mente", "ções", "s")
         private fun jsonEscape(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
 

@@ -76,13 +76,23 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
 
         Spacer(Modifier.height(14.dp))
         GlassCard(Modifier.fillMaxWidth(), tint = Ink.aqua) {
+            // ritmo real do aprendizado conforme a bateria do aparelho
+            val eco = remember(state.autonomyEnabled) { vm.battery() }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("motor autônomo", style = Type.headline)
+                    Text("motor autônomo na internet", style = Type.headline)
                     Text(
-                        if (state.autonomyEnabled)
-                            "trabalhando sozinho · ${stats?.lastTask ?: "iniciando"}"
-                        else "parado — ele só aprende quando você manda",
+                        when {
+                            !state.autonomyEnabled ->
+                                "DESLIGADO — ele só aprende quando você manda"
+                            eco != null && !eco.allowNetwork && eco.powerSave ->
+                                "modo economia do aparelho · rede adiada, aprendendo local"
+                            eco != null && !eco.allowNetwork ->
+                                "bateria ${eco.level}% · rede espera até carregar"
+                            eco != null ->
+                                "bateria ${eco.level}% · busca a cada ${eco.delayMs / 60_000L} min"
+                            else -> "trabalhando sozinho · ${stats?.lastTask ?: "iniciando"}"
+                        },
                         style = Type.callout,
                     )
                 }
@@ -106,6 +116,16 @@ fun BrainScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
                 onClick = { vm.autonomousOnce() },
             ) {
                 Text("rodar uma tarefa agora", style = Type.headline.copy(fontSize = 13.sp))
+            }
+            Spacer(Modifier.height(8.dp))
+            GlassButton(
+                accent = Ink.aqua,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { vm.exportMemory() },
+            ) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("guardar cópia da memória no aparelho", style = Type.headline.copy(fontSize = 13.sp))
+                }
             }
             if (state.autonomyLog.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))

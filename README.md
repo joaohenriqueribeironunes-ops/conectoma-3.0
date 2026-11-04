@@ -26,7 +26,9 @@ paralaxe (sensorial atrás, complexo central, corpo cogumelo e motor na frente),
 cada ponto um neurônio real e cada fio uma sinapse real. A visão é estática —
 sem rotação, sem giro 3D — para não consumir GPU nem bateria. A barra de
 mensagens é contínua: campo de texto e envio no mesmo vidro, sem corte central.
-Paleta **Verde Grafite + Aurora** (amarelo só para sinalização/alertas).
+Paleta **Verde Grafite + Aurora** (amarelo só para sinalização/alertas) com
+**estética OneUI 7**: títulos grandes em negrito, cartões bem arredondados,
+botões-pílula e aba ativa com bolha de fundo.
 
 - `o que é sinapse?` → só a definição + o que ele já leu sobre o tema
 - `como a música se liga à matemática?` → definições dos dois e a distância conceitual
@@ -47,9 +49,34 @@ documento; as primeiras páginas são renderizadas na tela para você ver o que
 ele está lendo. O interruptor de **aprendizado autônomo** faz ele buscar temas
 sozinho e continuar mesmo com o app fechado (serviço em primeiro plano).
 
-**Cérebro** — dopamina acumulada, **motor autônomo** (liga/desliga, tarefas,
-leituras, pontes e insights), conexões que você fortaleceu, busca no dicionário e
+**Cérebro** — dopamina acumulada, **motor autônomo** (interruptor para
+**desligar quando quiser**, bateria e ritmo atuais, tarefas, leituras, pontes e
+insights), conexões que você fortaleceu, busca no dicionário e
 a calculadora de distância conceitual entre duas palavras e o painel de circuitos cognitivos (complexo central, memória de trabalho, corpo cogumelo, neuromodulação).
+
+## Memória cumulativa sem crash
+
+- O léxico aprendido e a memória episódica crescem **no armazenamento do
+  aparelho** (arquivos próprios com escrita atômica `tmp → rename`), nunca nas
+  SharedPreferences — estourar as prefs era o crash inevitável de uma memória
+  que só aumenta. Teto finito: 8.000 palavras novas e 40.000 ligações novas.
+- Todo o carregamento é **auto-curável**: arquivo corrompido é descartado e
+  refeito, cada bloco de restauração é isolado, e um crash em runtime grava a
+  memória na hora (`emergencySave`) antes de o processo morrer. Reabrir o app
+  é sempre seguro — inicialização idempotente, um boot por vez.
+- **Guardar memória:** o botão *guardar cópia da memória no aparelho* exporta
+  `conectoma-seed.bin`. Ao colocá-lo em `app/src/main/assets/` e recompilar,
+  **o APK nasce maior exatamente na medida em que o conectoma entende do
+  mundo** — e todo aparelho que instalar essa build já começa com esse
+  conhecimento (léxico + leituras fundidos, sem duplicar nada).
+
+## Economia de bateria
+
+O aprendizado autônomo (internet) pede licença à bateria a cada ciclo:
+modo de economia do sistema → só aprende local, 20 min de intervalo; bateria
+≤ 20% → rede adiada, 12 min; carregando no Wi-Fi → a cada 90 s. O cartão do
+motor autônomo mostra o nível de bateria e o ritmo real, e o interruptor
+**desliga de vez** (serviço para, a rede para, o app para de buscar sozinho).
 
 ## O que é real aqui
 

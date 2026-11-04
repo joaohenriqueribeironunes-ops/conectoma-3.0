@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -188,10 +189,13 @@ private fun GlassTabBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
         ) {
             tabs.forEachIndexed { index, t ->
                 val active = index == selected
+                // OneUI 7: a aba ativa ganha uma "bolha" de fundo atrás do
+                // ícone + rótulo — seleção visível sem depender só de cor
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (active) Ink.aqua.copy(alpha = 0.14f) else Color.Transparent)
                         .clickable { onSelect(index) }
                         .padding(vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,7 +205,8 @@ private fun GlassTabBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                     Text(
                         t.label,
                         style = Type.caption.copy(
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                             color = if (active) Ink.cyan else Ink.dim,
                             letterSpacing = 0.1.sp,
                         ),

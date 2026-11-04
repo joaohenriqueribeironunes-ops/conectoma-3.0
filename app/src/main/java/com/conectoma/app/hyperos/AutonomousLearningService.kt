@@ -46,17 +46,30 @@ class AutonomousLearningService : Service() {
             loop = scope.launch {
                 val brain = Brain.get(applicationContext)
                 if (!brain.ready) brain.initialize { stage, _ -> update("carregando: $stage") }
-                var cycles = 0
+                val prefs = getSharedPreferences("conectoma", MODE_PRIVATE)
                 while (isActive) {
-                    delay(90_000L)
+                    // economia de bateria dita o ritmo: 90 s carregando no Wi-Fi,
+                    // até 20 min em modo de economia de energia do sistema
+                    val eco = runCatching {
+                        com.conectoma.app.core.BatteryEconomy.read(applicationContext)
+                    }.getOrNull()
+                    delay(eco?.delayMs ?: 5 * 60_000L)
+                    // interruptor desligado na UI = serviço para de vez,
+                    // mesmo que alguma chamada anterior o tenha deixado vivo
+                    if (!prefs.getBoolean("autonomy", false)) {
+                        stopSelf()
+                        return@launch
+                    }
                     if (!brain.ready) continue
-                    val result = runCatching { brain.autonomousStep(allowNetwork = true) }.getOrNull()
-                        ?: continue
-                    cycles++
+                    val result = runCatching {
+                        brain.autonomousStep(allowNetwork = eco?.allowNetwork ?: false)
+                    }.getOrNull() ?: continue
                     update(result.description)
-                    getSharedPreferences("conectoma", MODE_PRIVATE).edit()
+                    // atenção: NÃO regravamos a chave "autonomy" aqui — ela é do
+                    // usuário. Reescrevê-la reativava o aprendizado autônomo
+                    // depois de o interruptor ser desligado
+                    prefs.edit()
                         .putString("last_insight", result.description)
-                        .putBoolean("autonomy", true)
                         .apply()
                     if (result.insight > 0.55f) {
                         val nm = getSystemService(NotificationManager::class.java)

@@ -61,31 +61,36 @@ object Ink {
     val strokeStrong = Color(0x40FFFFFF)
 }
 
+/**
+ * Escala tipográfica no padrão OneUI 7: títulos grandes e em negrito,
+ * hierarquia clara (título → seção → corpo → apoio), corpo com entrelinha
+ * confortável e legendas calmas — o texto é parte do design, não enfeite.
+ */
 object Type {
     private val sans = FontFamily.SansSerif
     val largeTitle = TextStyle(
-        fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 34.sp,
-        letterSpacing = (-0.9).sp, color = Ink.paper,
+        fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 32.sp,
+        letterSpacing = (-0.8).sp, color = Ink.paper,
     )
     val title = TextStyle(
-        fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
-        letterSpacing = (-0.5).sp, color = Ink.paper,
+        fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 21.sp,
+        letterSpacing = (-0.4).sp, color = Ink.paper,
     )
     val headline = TextStyle(
-        fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 17.sp,
-        letterSpacing = (-0.25).sp, color = Ink.paper,
+        fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 16.sp,
+        letterSpacing = (-0.2).sp, color = Ink.paper,
     )
     val body = TextStyle(
-        fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 15.sp,
-        letterSpacing = (-0.1).sp, color = Ink.paper, lineHeight = 21.sp,
+        fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 15.5.sp,
+        letterSpacing = 0.sp, color = Ink.paper, lineHeight = 22.sp,
     )
     val callout = TextStyle(
-        fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 13.5.sp,
-        letterSpacing = 0.sp, color = Ink.mist, lineHeight = 18.sp,
+        fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 13.5.sp,
+        letterSpacing = 0.1.sp, color = Ink.mist, lineHeight = 19.sp,
     )
     val caption = TextStyle(
         fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 11.5.sp,
-        letterSpacing = 0.4.sp, color = Ink.dim,
+        letterSpacing = 0.2.sp, color = Ink.dim,
     )
     val mono = TextStyle(
         fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 12.sp,
@@ -132,6 +137,7 @@ fun GlassPanel(
     }
 }
 
+/** Pill OneUI: cantos totalmente arredondados, sem borda dura. */
 @Composable
 fun GlassButton(
     modifier: Modifier = Modifier,
@@ -140,7 +146,7 @@ fun GlassButton(
     onClick: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(26.dp)
     Box(
         modifier = modifier
             .clip(shape)

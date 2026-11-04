@@ -277,12 +277,25 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
 
         Spacer(Modifier.height(16.dp))
         GlassCard(Modifier.fillMaxWidth(), tint = Ink.aqua) {
+            // leitura da bateria memoizada: muda devagar e não pode custar recomposição
+            val eco = remember(state.autonomyEnabled) { vm.battery() }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("aprendizado autônomo", style = Type.headline)
+                    Text("aprender sozinho na internet", style = Type.headline)
                     Text(
-                        if (state.autonomyEnabled) "explorando o Wikipédia e reverberando em repouso"
-                        else "desligado — só aprende quando você ensina",
+                        when {
+                            !state.autonomyEnabled ->
+                                "desligado — só aprende quando você ensina"
+                            eco == null ->
+                                "ligado, buscando no Wikipédia com economia de bateria"
+                            !eco.allowNetwork && eco.powerSave ->
+                                "modo economia ativo · rede adiada até sair da economia"
+                            !eco.allowNetwork ->
+                                "bateria em ${eco.level}% · aprendendo só local até carregar"
+                            else ->
+                                "bateria ${eco.level}%${if (eco.charging) " · carregando" else ""} · " +
+                                    "rede no ritmo que a bateria permitir"
+                        },
                         style = Type.callout,
                     )
                 }
@@ -298,6 +311,16 @@ fun HomeScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingVa
                     accent = Color(0xFF2F3350),
                     onClick = { vm.saveNow() },
                 ) { Text("gravar memória", style = Type.headline.copy(fontSize = 13.sp)) }
+            }
+            Spacer(Modifier.height(8.dp))
+            GlassButton(
+                accent = Ink.aqua,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { vm.exportMemory() },
+            ) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("guardar cópia da memória no aparelho", style = Type.headline.copy(fontSize = 13.sp))
+                }
             }
         }
 
@@ -469,8 +492,7 @@ private fun ChatBubble(msg: ChatMessage) {
             Column {
                 Text(formatBold(msg.text), style = Type.body)
             }
-        }
-    }
+        }    }
 }
 
 @Composable
@@ -522,8 +544,8 @@ fun LearnScreen(state: UiState, vm: ConectomaViewModel, contentPadding: PaddingV
             .padding(horizontal = 20.dp)
     ) {
         Spacer(Modifier.height(8.dp))
-        Text("aprender de um URL", style = Type.largeTitle)
-        Text("leio a página, extraio conceitos, reforço sinapses e ganho palavras novas", style = Type.callout)
+        Text("aprender", style = Type.largeTitle)
+        Text("de um URL — leio a página, extraio conceitos e reforço as sinapses", style = Type.callout)
         Spacer(Modifier.height(18.dp))
         InputField(
             value = url,

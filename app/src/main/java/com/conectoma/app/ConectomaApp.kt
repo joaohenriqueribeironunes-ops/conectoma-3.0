@@ -25,6 +25,9 @@ class ConectomaApp : Application() {
     private fun installCrashLogger() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            // antes de morrer, tenta gravar o que o conectoma já aprendeu —
+            // um crash nunca pode custar a memória acumulada
+            runCatching { com.conectoma.app.core.Brain.get(this).emergencySave() }
             runCatching { persistCrash(thread, error) }
             previous?.uncaughtException(thread, error)
         }

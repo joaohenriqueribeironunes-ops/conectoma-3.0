@@ -442,17 +442,33 @@ class Brain private constructor(val context: Context) {
         private set
 
     // ------------------------------------------------------------------ persistence
+
+    @Volatile
+    private var lastSaveAt = System.currentTimeMillis()
+
     private fun remember(response: ReasoningEngine.Response) {
-        if (totalLearningEvents % 4 == 0) {
+        // persistência por tempo, não por evento: gravar a cada aprendizado
+        // empurrava megabytes para o disco de rajada — custo puro de bateria
+        val now = System.currentTimeMillis()
+        if (now - lastSaveAt >= SAVE_INTERVAL_MS) {
+            lastSaveAt = now
             runCatching { save() }
         }
     }
 
     fun save() {
         if (!ready) return
+        runCatching { saveLocked() }
+    }
+
+    /** última tentativa de gravar o aprendizado — usada se algo quebrar em runtime */
+    fun emergencySave() {
+        if (ready) runCatching { saveLocked() }
+    }
+
+    private fun saveLocked() {
         val st = stats() ?: return
         prefs.edit()
-            .putString("semantics", semantics.serialiseLearned())
             .putInt("events", totalLearningEvents)
             .putLong("spikes", network.totalSpikes)
             .putInt("bursts", dopamine.totalBursts)
@@ -469,18 +485,121 @@ class Brain private constructor(val context: Context) {
                 "${fmt(st.neurons)} neurônios · ${fmt(st.synapses)} sinapses · ${fmt(st.words)} palavras"
             )
             .apply()
+        runCatching { saveLearned() }
         runCatching { saveMemory() }
         runCatching { savePlastic() }
     }
 
+    // ---- escrita atômica: grava em .tmp e renomeia. Um arquivo pela metade
+    //      (app morto no meio da gravação) nunca mais vira crash no boot.
+    private fun atomicWriteText(file: File, text: String) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(text)
+        file.delete()
+        if (!tmp.renameTo(file)) {
+            runCatching { tmp.copyTo(file, overwrite = true) }
+            tmp.delete()
+        }
+    }
+
+    private fun atomicWrite(file: File, write: (java.io.OutputStream) -> Unit) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.outputStream().buffered().use { write(it) }
+        file.delete()
+        if (!tmp.renameTo(file)) {
+            runCatching { tmp.copyTo(file, overwrite = true) }
+            tmp.delete()
+        }
+    }
+
+    /**
+     * Aprendizado acumulado em arquivo próprio, fora do SharedPreferences:
+     * as prefs têm limite por processo (~1 MB) e estouravam à medida que o
+     * app entendia mais do mundo — era o crash inevitável de memória cumulativa.
+     */
+    private fun saveLearned() {
+        val text = semantics.serialiseLearned()
+        atomicWriteText(File(context.filesDir, LEARNED_FILE), text)
+    }
+
+    private fun loadLearned() {
+        val file = File(context.filesDir, LEARNED_FILE)
+        if (file.exists()) {
+            val blob = runCatching { file.readText() }.getOrNull()
+            if (blob == null) {
+                // ilegível (ex.: tmp antigo): apaga e regrava limpo no próximo save
+                runCatching { file.delete(); File(file.parentFile, file.name + ".tmp").delete() }
+            } else {
+                semantics.restoreLearned(blob)
+            }
+        } else {
+            // migração das versões que guardavam o léxico dentro das prefs
+            val legacy = prefs.getString("semantics", null)
+            if (!legacy.isNullOrBlank()) {
+                semantics.restoreLearned(legacy)
+                runCatching { prefs.edit().remove("semantics").apply() }
+                runCatching { saveLearned() }
+            }
+        }
+    }
+
     private fun saveMemory() {
-        File(context.filesDir, "memory.bin").writeText(memory.serialise())
+        atomicWriteText(File(context.filesDir, "memory.bin"), memory.serialise())
     }
 
     private fun loadMemory() {
         val file = File(context.filesDir, "memory.bin")
         if (!file.exists()) return
-        runCatching { memory.restore(file.readText()) }
+        val blob = runCatching { file.readText() }.getOrNull()
+        if (blob == null) {
+            runCatching { file.delete() }
+            return
+        }
+        memory.restore(blob)
+        // blob não vazio que não produziu nenhum engrama = arquivo corrompido:
+        // apaga e segue — a memória se refaz, mas o app NÃO para de abrir
+        if (blob.isNotBlank() && memory.size == 0) runCatching { file.delete() }
+    }
+
+    /**
+     * Pacote de conhecimento acumulado embutido no APK ([SEED_ASSET]).
+     * O app exporta o próprio aprendizado; ao colocar o arquivo em
+     * `app/src/main/assets/` e recompilar, o APK cresce exatamente na medida
+     * em que o conectoma entende do mundo — e esse conhecimento passa a nascer
+     * com ele em qualquer aparelho.
+     */
+    private fun loadSeedSemantic() {
+        val text = readSeed() ?: return
+        val sep = text.indexOf(SEED_SEP)
+        if (sep < 0) return
+        semantics.restoreLearned(text.substring(0, sep))
+    }
+
+    private fun loadSeedMemory() {
+        val text = readSeed() ?: return
+        val sep = text.indexOf(SEED_SEP)
+        if (sep < 0) return
+        // merge (não substitui): a memória do aparelho fica e a do pacote soma
+        memory.merge(text.substring(sep + 1))
+    }
+
+    private fun readSeed(): String? = runCatching {
+        context.assets.open(SEED_ASSET).use { String(it.readBytes(), Charsets.UTF_8) }
+    }.getOrNull()?.takeIf { it.contains(SEED_SEP) }
+
+    /** grava o conhecimento acumulado num arquivo portátil no armazenamento do aparelho */
+    fun exportSeed(): File? {
+        if (!ready || !this::semantics.isInitialized) return null
+        val dir = runCatching { context.getExternalFilesDir(null) }.getOrNull() ?: context.filesDir
+        runCatching { dir.mkdirs() }
+        val blob = buildString {
+            append(runCatching { semantics.serialiseLearned() }.getOrDefault(""))
+            append(SEED_SEP)
+            append(runCatching { memory.serialise() }.getOrDefault(""))
+        }
+        val file = File(dir, SEED_ASSET)
+        atomicWriteText(file, blob)
+        return file
     }
 
     private fun fmt(v: Int): String = String.format(java.util.Locale("pt", "BR"), "%,d", v).replace(',', '.')
@@ -498,11 +617,13 @@ class Brain private constructor(val context: Context) {
                 if (changed.size >= 600_000) break
             }
         }
-        DataOutputStream(file.outputStream().buffered()).use { out ->
-            out.writeInt(changed.size)
-            for (i in changed.indices) {
-                out.writeInt(changed[i])
-                out.writeShort((values[i] * 4096f).toInt().coerceIn(-32768, 32767))
+        atomicWrite(file) { stream ->
+            DataOutputStream(stream).use { out ->
+                out.writeInt(changed.size)
+                for (i in changed.indices) {
+                    out.writeInt(changed[i])
+                    out.writeShort((values[i] * 4096f).toInt().coerceIn(-32768, 32767))
+                }
             }
         }
     }
@@ -524,7 +645,11 @@ class Brain private constructor(val context: Context) {
     }
 
     private fun restore() {
-        prefs.getString("semantics", null)?.let { semantics.restoreLearned(it) }
+        // 1. léxico: primeiro o pacote embutido no APK (dedup evita duplicar),
+        //    depois o arquivo acumulado do aparelho — cada bloco isolado para
+        //    que um arquivo corrompido nunca impeça o app de abrir
+        runCatching { loadSeedSemantic() }
+        runCatching { loadLearned() }
         prefs.getString("topics", "")?.split("\u0001")?.filter { it.isNotBlank() }?.forEach { learnedTopics.add(it) }
         prefs.getString("recent", "")?.split("\u0001")?.filter { it.isNotBlank() }?.forEach {
             val id = semantics.idOf(it)
@@ -541,11 +666,23 @@ class Brain private constructor(val context: Context) {
             consolidations = prefs.getInt("autoConsolidations", 0),
             insights = prefs.getInt("autoInsights", 0),
         )
-        loadMemory()
-        loadPlastic()
+        runCatching { loadMemory() }
+        // 2. memória episódica: aparelho primeiro (limpa e recarrega), depois
+        //    o pacote do APK somado via merge — nada do que já foi lido se perde
+        runCatching { loadSeedMemory() }
+        runCatching { loadPlastic() }
     }
 
     companion object {
+        /** arquivo portátil de conhecimento acumulado (exportado pelo app / embutido no APK) */
+        private const val SEED_ASSET = "conhecimento-seed.bin"
+        /** separador entre o léxico aprendido e a memória episódica no pacote */
+        private const val SEED_SEP = '\u0004'
+        /** léxico aprendido fora do SharedPreferences (prefs estouram ~1 MB) */
+        private const val LEARNED_FILE = "learned.json"
+        /** persistência periódica em tempo real — não por evento, para gastar bateria */
+        private const val SAVE_INTERVAL_MS = 60_000L
+
         @Volatile
         private var instance: Brain? = null
 

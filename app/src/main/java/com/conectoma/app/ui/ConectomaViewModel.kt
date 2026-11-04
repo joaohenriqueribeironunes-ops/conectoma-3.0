@@ -117,9 +117,16 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch(Dispatchers.Default) {
             while (true) {
-                delay(20_000)
+                // economia de bateria: o próprio aparelho decide o intervalo
+                // (20 min em economia de energia, 12 min com bateria baixa,
+                //  90 s carregando no Wi-Fi…) e se a rede pode ser usada
+                val eco = runCatching {
+                    com.conectoma.app.core.BatteryEconomy.read(getApplication())
+                }.getOrNull()
+                delay(eco?.delayMs ?: 5 * 60_000L)
                 if (!_state.value.autonomyEnabled) continue
-                val media = runCatching { brain.autonomousStep(allowNetwork = true) }.getOrNull() ?: continue
+                val allowNetwork = eco?.allowNetwork ?: false
+                val media = runCatching { brain.autonomousStep(allowNetwork = allowNetwork) }.getOrNull() ?: continue
                 _state.update {
                     it.copy(
                         autonomyLog = (listOf(media.description) + it.autonomyLog).take(24),
@@ -347,10 +354,41 @@ class ConectomaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** estado da bateria — a UI mostra o ritmo real do aprendizado autônomo */
+    fun battery(): com.conectoma.app.core.BatteryEconomy.Report? =
+        runCatching {
+            com.conectoma.app.core.BatteryEconomy.read(getApplication<Application>())
+        }.getOrNull()
+
     fun saveNow() {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { brain.save() }
             _state.update { it.copy(lastReport = "memória gravada") }
+        }
+    }
+
+    /**
+     * Guarda a memória acumulada no aparelho num arquivo portátil
+     * (`conectoma-seed.bin`, em Android/data/…/files). Colocando esse arquivo
+     * em `app/src/main/assets/` e recompilando, o APK nasce com todo o
+     * conhecimento que o conectoma já entendeu do mundo.
+     */
+    fun exportMemory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { brain.save() }
+            val file = runCatching { brain.exportSeed() }.getOrNull()
+            val msg = if (file != null) {
+                "Memória guardada no aparelho:\n\n`${file.absolutePath}`\n\n" +
+                    "É esse arquivo que vira o pacote de conhecimento do próximo APK."
+            } else {
+                "Ainda não há memória para guardar — ensine ou leia algo antes."
+            }
+            _state.update {
+                it.copy(
+                    lastReport = "memória exportada",
+                    messages = it.messages + ChatMessage(seq.incrementAndGet(), false, msg),
+                )
+            }
         }
     }
 

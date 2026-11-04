@@ -255,6 +255,31 @@ class MemoryEngine(private val semantics: SemanticEngine) {
         }
     }
 
+    /**
+     * Mescla outro blob (ex.: pacote de conhecimento vindo do APK) sem apagar
+     * o que já está guardado — títulos repetidos são ignorados. É o que torna a
+     * memória verdadeiramente acumulativa entre fontes.
+     */
+    fun merge(blob: String) {
+        if (blob.isBlank()) return
+        runCatching {
+            val have = engrams.map { it.title }.toHashSet()
+            for (record in blob.split(RECORD)) {
+                if (record.isBlank()) continue
+                if (engrams.size >= MAX_ENGRAMS) break
+                val p = record.split(FIELD)
+                if (p.size < 5) continue
+                val title = unesc(p[0])
+                if (!have.add(title)) continue
+                val concepts = p[2].split(LIST).filter { it.isNotBlank() }.map { unesc(it) }
+                val facts = p[3].split(LIST).filter { it.isNotBlank() }.map { unesc(it) }
+                val stamp = p[4].toLongOrNull() ?: 0L
+                engrams.add(Engram(title, unesc(p[1]), concepts, facts, stamp))
+                clock = maxOf(clock, stamp + 1L)
+            }
+        }
+    }
+
     private fun esc(s: String): String = s
         .replace("\\", "\\\\")
         .replace(FIELD.toString(), "\\f")

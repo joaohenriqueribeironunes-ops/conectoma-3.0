@@ -50,8 +50,16 @@ entre ideias distantes que apareceram juntas no mesmo texto.
 Com o **motor autônomo** ligado, ele continua sem você: escolhe o que estudar a
 partir das próprias lacunas — palavras que aprendeu lendo e ainda não têm
 significado, palavras comuns que nunca entraram em nenhuma ligação — busca o
-resumo no Wikipédia, lê, consolida e repete. A cada 90 segundos, com o app aberto
-ou em segundo plano.
+resumo no Wikipédia, lê, consolida e repete. O ritmo segue a **bateria**: 90 s
+carregando no Wi-Fi, a cada 5–6 min no uso normal, 12 min com bateria baixa e
+rede adiada no modo de economia do aparelho. O **interruptor na tela Cérebro
+desliga tudo de vez** — inclusive a internet autônoma.
+
+Para guardar o que ele aprendeu, use **“guardar cópia da memória no
+aparelho”** (tela Cérebro): ele exporta `conectoma-seed.bin`. Esse arquivo,
+colocado em `app/src/main/assets/` e recompilado com `tools\pack-seed.ps1`,
+embute o conhecimento no próximo APK — o app nasce maior e mais sábio a cada
+versão que você mesmo constrói.
 
 ## 4. O que esperar (e o que não esperar)
 

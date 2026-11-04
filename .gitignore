@@ -19,3 +19,8 @@ tools/__pycache__/
 # scratch
 _publish/
 *.log
+
+# release artifact goes to GitHub Releases, never to git
+Conectoma*.apk
+crash-log.txt
+/conectoma-seed.bin
